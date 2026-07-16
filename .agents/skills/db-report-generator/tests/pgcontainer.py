@@ -45,13 +45,17 @@ class PostgresContainer:
     def __enter__(self):
         self.port = _free_port()
         self.name = f"dbrep-test-{self.port}"
-        subprocess.run(
-            ["docker", "run", "-d", "--rm", "--name", self.name,
-             "-e", "POSTGRES_PASSWORD=postgres",
-             "-p", f"{self.port}:5432", self.image],
-            check=True, capture_output=True,
-        )
-        self._wait_ready()
+        try:
+            subprocess.run(
+                ["docker", "run", "-d", "--rm", "--name", self.name,
+                 "-e", "POSTGRES_PASSWORD=postgres",
+                 "-p", f"{self.port}:5432", self.image],
+                check=True, capture_output=True,
+            )
+            self._wait_ready()
+        except Exception:
+            subprocess.run(["docker", "rm", "-f", self.name], capture_output=True)
+            raise
         return self
 
     def _wait_ready(self, timeout: float = 60.0):
