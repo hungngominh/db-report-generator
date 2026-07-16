@@ -668,14 +668,49 @@ Create `SKILL_DIR/scripts/lib/redact.py`:
 import hashlib
 import re
 
-_DSN_RE = re.compile(r"^(?P<scheme>\w+)://(?P<user>[^:@/]+)(?::[^@/]+)?@(?P<host>[^:/]+)(?P<rest>[:/].*)?$")
+_DSN_RE = re.compile(
+    r"^(?P<scheme>[a-zA-Z][\w+.\-]*)://(?P<authority>[^/?#]*)(?P<tail>[/?#].*)?$",
+    re.DOTALL,
+)
 
 
 def redact_dsn(dsn: str) -> str:
+    """Hide password, ALL host(s), query AND fragment secrets in a DSN.
+
+    Whitelist path: preserve the db-name only when it is a single clean token
+    (``/[\\w.-]+``); over-redact anything else (host material leaked into the
+    path, extra segments, ports). Over-redact the whole locator if an '@' lands
+    in the tail. Fails safe: unparseable input becomes a placeholder.
+    (Hardened over 3 review rounds — closes multi-host/IPv6, query/fragment,
+    and host-in-path leak classes.)
+    """
     m = _DSN_RE.match(dsn.strip())
     if not m:
         return "«redacted-dsn»"
-    return f"{m.group('scheme')}://{m.group('user')}:«redacted»@«host»{m.group('rest') or ''}"
+    scheme = m.group("scheme")
+    authority = m.group("authority")
+    tail = m.group("tail") or ""
+
+    if "@" in tail:
+        return f"{scheme}://«redacted»"
+
+    if "@" in authority:
+        userinfo, _hostinfo = authority.rsplit("@", 1)
+        user = userinfo.split(":", 1)[0]
+        cred = f"{user}:«redacted»" if ":" in userinfo else user
+        redacted_authority = f"{cred}@«host»"
+    else:
+        redacted_authority = "«host»"
+
+    path = re.split(r"[?#]", tail, maxsplit=1)[0]
+    if path in ("", "/"):
+        redacted_tail = path
+    elif re.fullmatch(r"/[\w.\-]+", path):
+        redacted_tail = path if path == tail else path + "?«redacted»"
+    else:
+        redacted_tail = "/«redacted»"
+
+    return f"{scheme}://{redacted_authority}{redacted_tail}"
 
 
 def redact_value(text: str, mode: str) -> str:
