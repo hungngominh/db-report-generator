@@ -12,6 +12,10 @@ from scripts.collectors import duplicate_index
 
 COLLECTORS["duplicate_index"] = duplicate_index.collect
 
+from scripts.collectors import index_bloat
+
+COLLECTORS["index_bloat"] = index_bloat.collect
+
 
 def run_collectors(conn, caps, registry=None):
     """Run every collector with per-collector isolation.
