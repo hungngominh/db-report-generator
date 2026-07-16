@@ -22,3 +22,27 @@ def test_redact_value_modes():
 def test_contains_secret():
     assert contains_secret("dsn=...s3cr3t...", ["s3cr3t"])
     assert not contains_secret("clean text", ["s3cr3t"])
+
+
+def test_redact_dsn_multi_host_no_leak():
+    out = redact_dsn("postgresql://app:s3cr3t@host1.internal:5432,host2.internal:5432/prod")
+    assert "s3cr3t" not in out
+    assert "host1.internal" not in out
+    assert "host2.internal" not in out
+
+
+def test_redact_dsn_ipv6_host_no_leak():
+    out = redact_dsn("postgresql://app:s3cr3t@[2001:db8::1]:5432/prod")
+    assert "s3cr3t" not in out
+    assert "2001:db8" not in out
+
+
+def test_redact_dsn_query_string_secret_no_leak():
+    out = redact_dsn("postgresql://app@db.example:5432/prod?password=s3cr3t&sslmode=require")
+    assert "s3cr3t" not in out
+
+
+def test_redact_dsn_no_password_not_fabricated():
+    out = redact_dsn("postgresql://user@db.example:5432/mydb")
+    assert out == "postgresql://user@«host»/mydb"
+    assert "db.example" not in out
