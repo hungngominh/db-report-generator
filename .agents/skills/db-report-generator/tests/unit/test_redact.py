@@ -46,3 +46,20 @@ def test_redact_dsn_no_password_not_fabricated():
     out = redact_dsn("postgresql://user@db.example:5432/mydb")
     assert out == "postgresql://user@«host»/mydb"
     assert "db.example" not in out
+
+
+def test_redact_dsn_bare_fragment_secret_no_leak():
+    out = redact_dsn("postgresql://app:s3cr3t@db.example/mydb#s3cr3t")
+    assert "s3cr3t" not in out
+    assert "db.example" not in out
+
+
+def test_redact_dsn_password_with_slash_no_leak():
+    out = redact_dsn("postgresql://app:pa/ss@db.internal.example:5432/mydb")
+    assert "db.internal.example" not in out
+    assert "pa/ss" not in out
+
+
+def test_redact_dsn_password_with_hash_no_leak():
+    out = redact_dsn("postgresql://app:pa#ss@db.internal.example:5432/mydb")
+    assert "db.internal.example" not in out
