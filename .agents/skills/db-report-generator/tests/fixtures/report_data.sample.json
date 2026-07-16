@@ -1,0 +1,67 @@
+{
+  "schema_version": "4.0",
+  "tool_version": "4.0.0",
+  "run": {"run_id": "run-fixture-0001", "started_at": "2026-07-16T00:00:00Z", "completed_at": "2026-07-16T00:00:31Z"},
+  "redaction_mode": "redact",
+  "targets": [
+    {
+      "target_id": "t-main",
+      "database": "app_prod",
+      "collection_status": "ok",
+      "error": null,
+      "capabilities": {"server_version_num": 160004, "is_superuser": false, "vendor": "supabase", "managed": true},
+      "diagnostics": {
+        "overview": {
+          "collector_version": "1.0",
+          "scope": "database",
+          "status": "ok",
+          "reason": null,
+          "quality": {"sampling_valid": true, "reset_detected": false, "insufficient_activity": false, "truncated": false},
+          "metrics": [],
+          "findings": [
+            {"finding_id": "db.reachable", "severity": "info", "assessment": "green", "confidence": "measured", "title": "Kết nối và thu thập thành công", "evidence_ids": [], "remediation_ids": []}
+          ]
+        },
+        "query_workload": {
+          "collector_version": "1.0",
+          "scope": "database",
+          "status": "ok",
+          "reason": null,
+          "quality": {"sampling_valid": true, "reset_detected": false, "insufficient_activity": false, "truncated": false},
+          "metrics": [],
+          "findings": [
+            {"finding_id": "query.high-total-time", "severity": "warning", "assessment": "yellow", "confidence": "measured", "title": "Một query chiếm phần lớn tổng thời gian thực thi", "evidence_ids": ["ev.q.1"], "remediation_ids": ["rem.index.1"]}
+          ]
+        },
+        "wraparound": {
+          "collector_version": "1.0",
+          "scope": "database",
+          "status": "ok",
+          "reason": "stats vừa reset giữa 2 mẫu",
+          "quality": {"sampling_valid": false, "reset_detected": true, "insufficient_activity": false, "truncated": false},
+          "metrics": [],
+          "findings": [
+            {"finding_id": "xid.wraparound-age", "severity": "notice", "assessment": "unknown", "confidence": "heuristic", "title": "Không đủ dữ liệu tin cậy để đánh giá tuổi XID", "evidence_ids": [], "remediation_ids": []}
+          ]
+        },
+        "wait_events": {
+          "collector_version": "1.0",
+          "scope": "cluster",
+          "status": "skipped",
+          "reason": "cần pg_read_all_stats",
+          "quality": {"sampling_valid": false, "reset_detected": false, "insufficient_activity": false, "truncated": false},
+          "metrics": [],
+          "findings": []
+        }
+      }
+    },
+    {
+      "target_id": "t-analytics",
+      "database": "analytics",
+      "collection_status": "error",
+      "error": "statement_timeout: không kết nối được trong 5s",
+      "capabilities": {},
+      "diagnostics": {}
+    }
+  ]
+}
