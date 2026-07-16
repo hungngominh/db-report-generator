@@ -59,3 +59,22 @@ def test_metadata_present_but_no_time_in_diagnostics(pg_dsn):
     # capabilities/diagnostics carry no timestamp keys
     caps = report["targets"][0]["capabilities"]
     assert not any("_at" in k or k in ("timestamp", "now") for k in caps)
+
+
+def test_scrub_strips_resolved_ip_literal_not_just_configured_host():
+    # libpq echoes the resolved IP even when ServerName is a hostname.
+    cfg = DbConfig(host="db.prod.internal", port=5432, database="prod",
+                   user="appuser", password="pw", project_name="p")
+    msg = ('connection to server at "db.prod.internal" (10.20.30.40), '
+           'port 5432 failed: Connection refused')
+    out = _scrub(msg, cfg)
+    assert "db.prod.internal" not in out
+    assert "10.20.30.40" not in out          # the resolved IP must be gone
+    assert "Connection refused" in out        # useful reason preserved
+
+
+def test_scrub_strips_ipv6_literal():
+    cfg = DbConfig(host="localhost", port=5432, database="prod",
+                   user="u", password="pw", project_name="p")
+    out = _scrub('server at "localhost" (::1), port 1 failed', cfg)
+    assert "::1" not in out
