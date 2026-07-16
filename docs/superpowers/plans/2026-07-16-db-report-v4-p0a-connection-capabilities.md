@@ -755,7 +755,7 @@ def test_sample_env_still_parses():
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `python -m pytest tests/unit/test_sample_env.py -q`
-Expected: FAIL (the current file contains `REDACTED-DB-HOST`).
+Expected: FAIL (the current file still contains a real IPv4 literal as `ServerName`).
 
 - [ ] **Step 3: Replace the file with a placeholder version**
 
