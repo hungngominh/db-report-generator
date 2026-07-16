@@ -17,3 +17,23 @@ def skill_dir() -> Path:
 def sample_report() -> dict:
     p = SKILL_DIR / "tests" / "fixtures" / "report_data.sample.json"
     return json.loads(p.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="session")
+def _pg_container():
+    from tests.pgcontainer import PostgresContainer, docker_available
+
+    if not docker_available():
+        pytest.skip("docker not available")
+    with PostgresContainer() as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def pg_dsn(_pg_container) -> dict:
+    return _pg_container.dsn_kwargs
+
+
+@pytest.fixture(scope="session")
+def pg_dsn_url(_pg_container) -> str:
+    return _pg_container.dsn_url
