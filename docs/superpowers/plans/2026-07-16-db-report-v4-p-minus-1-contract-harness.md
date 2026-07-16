@@ -868,7 +868,7 @@ git commit -m "feat(p-1): enforce confidence-invalidation invariant (B3)" -m "Co
 - Test: `SKILL_DIR/tests/unit/test_safety.py`
 
 **Interfaces:**
-- Produces: `READONLY_PREFIXES: tuple[str, ...]`; `is_readonly_sql(sql: str) -> bool` (True nếu statement bắt đầu bằng SELECT/WITH…SELECT/EXPLAIN-không-ANALYZE/SHOW/SET/TABLE; False cho DDL/DML/EXPLAIN ANALYZE). **Ghi chú:** đây là gate prefix tạm; P4 nâng cấp bằng parser `pglast`. P0+ import gate này.
+- Produces: `READONLY_PREFIXES: tuple[str, ...]`; `is_readonly_sql(sql: str) -> bool` — True chỉ cho **một** statement pure-read (SELECT/WITH-read-only/EXPLAIN-không-ANALYZE/SHOW/TABLE/VALUES); False cho DDL/DML, `SET` (đổi session state), `EXPLAIN ANALYZE`, **multi-statement** (`;`), và **writable CTE** (`WITH … (DELETE …)`). Nghiêng về False (over-reject an toàn). **Ghi chú:** gate tạm; P4 nâng cấp bằng parser `pglast`. P0+ import gate này.
 
 - [ ] **Step 1: Viết test thất bại**
 
@@ -884,8 +884,9 @@ from scripts.lib.safety import is_readonly_sql
     "  select * from pg_stat_activity",
     "WITH x AS (SELECT 1) SELECT * FROM x",
     "EXPLAIN SELECT * FROM t",
+    "EXPLAIN (VERBOSE) SELECT 1",
     "SHOW work_mem",
-    "SET statement_timeout = '3s'",
+    "SELECT 1;",
 ])
 def test_readonly_allowed(sql):
     assert is_readonly_sql(sql) is True
@@ -902,9 +903,12 @@ def test_readonly_allowed(sql):
     "EXPLAIN ANALYZE SELECT * FROM t",
     "EXPLAIN (ANALYZE, BUFFERS) SELECT 1",
     "VACUUM ANALYZE t",
+    "SET statement_timeout = '3s'",          # session state change → not read-only
+    "SELECT 1; DROP TABLE x",                # multi-statement
+    "WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x",  # writable CTE
     "",
 ])
-def test_write_or_analyze_blocked(sql):
+def test_write_or_unsafe_blocked(sql):
     assert is_readonly_sql(sql) is False
 ```
 
@@ -917,38 +921,55 @@ Expected: FAIL (`ModuleNotFoundError`).
 
 Create `SKILL_DIR/scripts/lib/safety.py`:
 ```python
-"""Read-only SQL gate (prefix-based; upgraded to a real parser in P4)."""
+"""Read-only SQL gate (conservative; upgraded to a real parser in P4).
+
+Returns True ONLY for a single, pure-read statement. Errs toward False: a
+legitimate read misclassified just won't be EXPLAINed; it is never True for
+anything that could modify data/schema/session state or execute a statement
+(incl. EXPLAIN ANALYZE, writable CTEs, and multi-statement strings).
+"""
 import re
 
-READONLY_PREFIXES = ("SELECT", "WITH", "EXPLAIN", "SHOW", "SET", "TABLE", "VALUES")
+READONLY_PREFIXES = ("SELECT", "WITH", "EXPLAIN", "SHOW", "TABLE", "VALUES")
 
-_LEADING_COMMENT = re.compile(r"^\s*(--[^\n]*\n|/\*.*?\*/|\s)+", re.DOTALL)
-_ANALYZE_IN_EXPLAIN = re.compile(r"\bANALYZE\b", re.IGNORECASE)
+_LEADING_NOISE = re.compile(r"^\s*(--[^\n]*\n|/\*.*?\*/|\s)+", re.DOTALL)
+# Data/schema/state-modifying verbs. Scanned ONLY for WITH/EXPLAIN statements,
+# where a writable CTE or an explained DML can hide. A plain SELECT/SHOW/TABLE/
+# VALUES cannot embed these, so it is not scanned (avoids false-negatives on
+# string literals / identifiers like a column named "update").
+_MODIFY = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|"
+    r"COPY|CALL|DO|VACUUM|ANALYZE|REINDEX|CLUSTER|REFRESH|LOCK|COMMENT|"
+    r"NOTIFY|IMPORT|SECURITY)\b",
+    re.IGNORECASE,
+)
 
 
 def _strip(sql: str) -> str:
-    return _LEADING_COMMENT.sub("", sql).strip()
+    return _LEADING_NOISE.sub("", sql).strip()
 
 
 def is_readonly_sql(sql: str) -> bool:
     s = _strip(sql)
     if not s:
         return False
+    # Reject multiple statements ("SELECT 1; DROP TABLE x"); allow one trailing ';'.
+    if ";" in s.rstrip().rstrip(";"):
+        return False
     head = s.split(None, 1)[0].upper()
     if head not in READONLY_PREFIXES:
         return False
-    if head == "EXPLAIN":
-        # EXPLAIN is read-only ONLY without ANALYZE (ANALYZE executes the statement).
-        prefix = s[: s.upper().find("SELECT")] if "SELECT" in s.upper() else s
-        if _ANALYZE_IN_EXPLAIN.search(prefix):
-            return False
+    # WITH may carry a writable CTE; EXPLAIN may explain a DML or use ANALYZE
+    # (which EXECUTES the statement). Scan those for modifying verbs.
+    if head in ("WITH", "EXPLAIN") and _MODIFY.search(s):
+        return False
     return True
 ```
 
 - [ ] **Step 4: Chạy để xác nhận pass**
 
 Run: `python -m pytest tests/unit/test_safety.py -v`
-Expected: PASS (17 passed).
+Expected: PASS (21 passed).
 
 - [ ] **Step 5: Commit**
 
