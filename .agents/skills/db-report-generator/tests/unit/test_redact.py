@@ -63,3 +63,14 @@ def test_redact_dsn_password_with_slash_no_leak():
 def test_redact_dsn_password_with_hash_no_leak():
     out = redact_dsn("postgresql://app:pa#ss@db.internal.example:5432/mydb")
     assert "db.internal.example" not in out
+
+
+def test_redact_dsn_slash_in_host_no_leak():
+    out = redact_dsn("postgresql://ev/il.internal.example:5432/mydb")
+    assert "il.internal.example" not in out
+
+
+def test_redact_dsn_slash_in_host_with_userinfo_no_leak():
+    out = redact_dsn("postgresql://app:s3cr3t@ev/il.internal.example:5432/mydb")
+    assert "il.internal.example" not in out
+    assert "s3cr3t" not in out

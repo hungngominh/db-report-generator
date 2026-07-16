@@ -11,11 +11,10 @@ _DSN_RE = re.compile(
 def redact_dsn(dsn: str) -> str:
     """Hide password, ALL host(s), query AND fragment secrets in a DSN.
 
-    Redacts the whole authority host block (multi-host libpq, bracketed IPv6),
-    drops both query (?) and fragment (#). If an unescaped reserved char in the
-    userinfo/host pushes an '@' into the tail, the authority parse is unsafe, so
-    the whole locator is over-redacted. Fails safe: unparseable → placeholder,
-    never the raw input.
+    Over-redacts aggressively: the db-name path is preserved ONLY when it is a
+    single clean token (``/[\\w.-]+``); anything unusual (host material leaking
+    into the path via an unescaped '/', extra segments, ports, etc.) is
+    replaced. Fails safe: unparseable input becomes a placeholder, never raw.
     """
     m = _DSN_RE.match(dsn.strip())
     if not m:
@@ -24,8 +23,7 @@ def redact_dsn(dsn: str) -> str:
     authority = m.group("authority")
     tail = m.group("tail") or ""
 
-    # '@' in the tail means the authority capture under-consumed (unescaped
-    # reserved char in userinfo/host) — cannot safely preserve the tail.
+    # '@' in the tail means the authority under-consumed → unsafe to preserve.
     if "@" in tail:
         return f"{scheme}://«redacted»"
 
@@ -37,9 +35,15 @@ def redact_dsn(dsn: str) -> str:
     else:
         redacted_authority = "«host»"
 
-    # Drop BOTH query and fragment — either can carry secrets.
+    # Preserve only a single clean db-name segment; over-redact anything else
+    # (covers host material that leaked into the path via an unescaped '/').
     path = re.split(r"[?#]", tail, maxsplit=1)[0]
-    redacted_tail = path if path == tail else path + "?«redacted»"
+    if path in ("", "/"):
+        redacted_tail = path
+    elif re.fullmatch(r"/[\w.\-]+", path):
+        redacted_tail = path if path == tail else path + "?«redacted»"
+    else:
+        redacted_tail = "/«redacted»"
 
     return f"{scheme}://{redacted_authority}{redacted_tail}"
 
