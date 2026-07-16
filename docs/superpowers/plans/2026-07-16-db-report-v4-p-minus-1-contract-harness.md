@@ -67,7 +67,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 └── .github/workflows/tests.yml          # Task 8 (template)
 ```
 
-Repo root cũng nhận `.gitignore` (Task 0).
+Repo root cũng nhận `.gitattributes` (Task 0); `.gitignore` đã có sẵn trong baseline (tạo ở pre-flight).
 
 ---
 
