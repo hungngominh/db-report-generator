@@ -40,3 +40,19 @@ def test_reports_dead_percent_when_pgstattuple_present(pg_dsn):
     assert diag["status"] == "ok"
     row = [m for m in diag["metrics"] if m["schema"] == "t_bloat" and m["table"] == "t"]
     assert row and row[0]["dead_tuple_percent"] > 20  # ~half deleted -> substantial
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_qualifies_function_with_extension_schema(pg_dsn):
+    # Proves the collector qualifies pgstattuple_approx with the schema from caps
+    # rather than relying on search_path: a bogus schema must make the call fail.
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pgstattuple")
+        caps = {"extensions": {"pgstattuple": {"present": True, "schema": "no_such_schema"}}}
+        with pytest.raises(psycopg2.Error):
+            collect(conn, caps)
+    finally:
+        conn.close()
