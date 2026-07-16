@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from scripts.lib.invariants import enforce_confidence_invalidation
-from scripts.lib.sortkeys import iter_findings, sort_targets, sorted_block_names
+from scripts.lib.sortkeys import iter_findings, severity_rank, sort_targets, sorted_block_names
 
 ASSESSMENT_ICONS = {
     "green": "🟢",
@@ -39,7 +39,7 @@ def render_db_status(data: dict) -> str:
                 lines.append("")
                 lines.append("| Finding | Mức | Đánh giá | Tin cậy |")
                 lines.append("|---|---|---|---|")
-                for f in diag["findings"]:
+                for f in sorted(diag["findings"], key=lambda f: (-severity_rank(f["severity"]), f["finding_id"])):
                     lines.append(f"| `{f['finding_id']}` | {f['severity']} | {_icon(f['assessment'])} {f['assessment']} | {f['confidence']} |")
             lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"

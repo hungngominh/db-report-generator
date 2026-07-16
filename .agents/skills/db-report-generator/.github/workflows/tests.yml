@@ -1,3 +1,5 @@
+# TEMPLATE — GitHub Actions only runs workflows at repo-root .github/workflows/.
+# Copy this file there to activate CI (spec §17).
 name: tests
 on: [push, pull_request]
 jobs:

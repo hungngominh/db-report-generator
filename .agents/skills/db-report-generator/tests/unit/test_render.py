@@ -37,3 +37,40 @@ def test_invalid_sampling_shows_unknown(sample_report):
     out = render_db_status(sample_report)
     assert "⚪" in out
     assert "xid.wraparound-age" in out
+
+
+def test_render_downgrades_violating_finding_b3():
+    # Guards render-layer wiring of B3: a finding under sampling_valid=false with
+    # a raw non-unknown assessment MUST be downgraded to ⚪ unknown by the render
+    # enforce step. Fails if enforce_confidence_invalidation() is removed from
+    # render_db_status / render_findings.
+    data = {
+        "schema_version": "4.0",
+        "tool_version": "4.0.0",
+        "run": {"run_id": "r", "started_at": "x", "completed_at": None},
+        "redaction_mode": "none",
+        "targets": [
+            {
+                "target_id": "t", "database": "db", "collection_status": "ok", "error": None,
+                "capabilities": {},
+                "diagnostics": {
+                    "d": {
+                        "collector_version": "1.0", "scope": "database", "status": "ok",
+                        "reason": None,
+                        "quality": {"sampling_valid": False, "reset_detected": True,
+                                    "insufficient_activity": False, "truncated": False},
+                        "metrics": [],
+                        "findings": [
+                            {"finding_id": "x.raw", "severity": "warning",
+                             "assessment": "red", "confidence": "measured",
+                             "evidence_ids": [], "remediation_ids": []}
+                        ],
+                    }
+                },
+            }
+        ],
+    }
+    status = render_db_status(data)
+    assert "🔴 red" not in status
+    assert "⚪ unknown" in status
+    assert render_findings(data).count("🔴 red") == 0
