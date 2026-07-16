@@ -84,25 +84,18 @@ Repo root cũng nhận `.gitignore` (Task 0).
 **Interfaces:**
 - Produces: `conftest.py` đặt `SKILL_DIR` lên `sys.path` và cung cấp fixture `sample_report` (đọc `tests/fixtures/report_data.sample.json`) + fixture `skill_dir` (Path). Mọi task sau import `from scripts.lib.X import ...` và dùng các fixture này.
 
-- [ ] **Step 1: Khởi tạo git + .gitignore**
+- [ ] **Step 1: Xác nhận git + tạo .gitattributes**
 
-Repo root chưa phải git repo (spec §17). Khởi tạo để có version control cho codebase mới:
+Git đã được khởi tạo ở pre-flight (repo đang ở branch `feature/db-report-v4`; `.gitignore` đã commit trong baseline). Chỉ cần thêm `.gitattributes` để **ép LF** — bảo đảm golden byte-ổn định cross-platform (Windows/CI Linux).
 
-Run (từ repo root `e:\Work\db-report-portable`):
-```bash
-git init
+Create `.gitattributes` (repo root):
+```gitattributes
+* text=auto eol=lf
 ```
 
-Create `.gitignore` (repo root):
-```gitignore
-__pycache__/
-*.pyc
-.pytest_cache/
-.venv/
-venv/
-*.env
-!*/references/sample.env
-.DS_Store
+Verify (từ repo root):
+```bash
+git rev-parse --abbrev-ref HEAD   # kỳ vọng: feature/db-report-v4
 ```
 
 - [ ] **Step 2: requirements-dev.txt + pytest.ini**
@@ -169,7 +162,7 @@ Expected: PASS (1 passed).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add .gitignore .agents/skills/db-report-generator/{requirements-dev.txt,pytest.ini,conftest.py,scripts,tests}
+git add .gitattributes .agents/skills/db-report-generator/{requirements-dev.txt,pytest.ini,conftest.py,scripts,tests}
 git commit -m "chore(p-1): pytest harness + scaffolding" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
@@ -959,7 +952,7 @@ def _check(name: str, actual: str):
     path = GOLDEN / name
     if os.environ.get("UPDATE_GOLDEN"):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(actual, encoding="utf-8")
+        path.write_text(actual, encoding="utf-8", newline="\n")
     assert path.read_text(encoding="utf-8") == actual, f"golden drift: {name}"
 
 
@@ -1075,11 +1068,11 @@ def build_summary(data: dict) -> dict:
 def render_all(data: dict, out_dir: Path) -> None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "DB_STATUS_REPORT.md").write_text(render_db_status(data), encoding="utf-8")
-    (out_dir / "FINDINGS.md").write_text(render_findings(data), encoding="utf-8")
+    (out_dir / "DB_STATUS_REPORT.md").write_text(render_db_status(data), encoding="utf-8", newline="\n")
+    (out_dir / "FINDINGS.md").write_text(render_findings(data), encoding="utf-8", newline="\n")
     (out_dir / "report_summary.json").write_text(
         json.dumps(build_summary(data), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+        encoding="utf-8", newline="\n",
     )
 ```
 
