@@ -20,6 +20,10 @@ from scripts.collectors import dead_tuples
 
 COLLECTORS["dead_tuples"] = dead_tuples.collect
 
+from scripts.collectors import table_index_size
+
+COLLECTORS["table_index_size"] = table_index_size.collect
+
 
 def run_collectors(conn, caps, registry=None):
     """Run every collector with per-collector isolation.
