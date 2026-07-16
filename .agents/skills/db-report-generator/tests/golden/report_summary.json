@@ -1,0 +1,23 @@
+{
+  "by_assessment": {
+    "green": 1,
+    "unknown": 1,
+    "yellow": 1
+  },
+  "by_severity": {
+    "info": 1,
+    "notice": 1,
+    "warning": 1
+  },
+  "targets": {
+    "t-analytics": {
+      "collection_status": "error",
+      "findings": 0
+    },
+    "t-main": {
+      "collection_status": "ok",
+      "findings": 3
+    }
+  },
+  "total_findings": 3
+}
