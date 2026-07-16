@@ -24,7 +24,9 @@ def test_analyze_output_is_schema_valid_and_isolates_failures(pg_dsn):
     by_id = {t["target_id"]: t for t in report["targets"]}
     assert by_id["good"]["collection_status"] == "ok"
     assert by_id["good"]["capabilities"]["server_version_num"] >= 140000
-    assert by_id["good"]["diagnostics"] == {}
+    # Registered collectors run for a healthy target; none of them error out.
+    # (Was `== {}` back when no collectors were registered in Phase 0a.)
+    assert all(d["status"] == "ok" for d in by_id["good"]["diagnostics"].values())
     # one dead target does not kill the run
     assert by_id["bad"]["collection_status"] == "error"
     assert by_id["bad"]["error"]

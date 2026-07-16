@@ -4,6 +4,10 @@ from scripts.collectors import base
 # Each collector module appends itself here (name -> collect callable).
 COLLECTORS = {}
 
+from scripts.collectors import fk_missing_index
+
+COLLECTORS["fk_missing_index"] = fk_missing_index.collect
+
 
 def run_collectors(conn, caps, registry=None):
     """Run every collector with per-collector isolation.
