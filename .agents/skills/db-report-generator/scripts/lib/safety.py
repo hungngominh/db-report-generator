@@ -1,23 +1,28 @@
-"""Read-only SQL gate (conservative; upgraded to a real parser in P4).
+"""Best-effort read-only SQL pre-filter (NOT a security boundary).
 
-Returns True ONLY for a single, pure-read statement. Errs toward False: a
-legitimate read misclassified just won't be EXPLAINed; it is never True for
-anything that could modify data/schema/session state or execute a statement
-(incl. EXPLAIN ANALYZE, writable CTEs, and multi-statement strings).
+Returns True only for a single statement that *looks* purely read-only by
+prefix + keyword inspection. This is an ADVISORY filter, not a guarantee: a
+keyword blocklist cannot catch every side effect (arbitrary volatile or
+administrative function calls in a SELECT list cannot be enumerated). The real
+safety boundary is a read-only transaction / read-only role enforced by the
+database (wired in P0+) plus the parser-based allowlist (P4). Callers MUST
+combine this with those — never treat True as proof of safety. Errs toward
+False (over-rejection is safe).
 """
 import re
 
 READONLY_PREFIXES = ("SELECT", "WITH", "EXPLAIN", "SHOW", "TABLE", "VALUES")
 
 _LEADING_NOISE = re.compile(r"^\s*(--[^\n]*\n|/\*.*?\*/|\s)+", re.DOTALL)
-# Data/schema/state-modifying verbs. Scanned ONLY for WITH/EXPLAIN statements,
-# where a writable CTE or an explained DML can hide. A plain SELECT/SHOW/TABLE/
-# VALUES cannot embed these, so it is not scanned (avoids false-negatives on
-# string literals / identifiers like a column named "update").
+# Modifying / executing verbs, plus INTO (SELECT..INTO = CREATE TABLE AS) and a
+# non-exhaustive set of known side-effecting functions. Scanned across the WHOLE
+# statement for EVERY accepted head. Not complete — see the module docstring.
 _MODIFY = re.compile(
     r"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|"
-    r"COPY|CALL|DO|VACUUM|ANALYZE|REINDEX|CLUSTER|REFRESH|LOCK|COMMENT|"
-    r"NOTIFY|IMPORT|SECURITY)\b",
+    r"COPY|CALL|DO|VACUUM|ANALYZE|REINDEX|CLUSTER|REFRESH|LOCK|COMMENT|NOTIFY|"
+    r"IMPORT|SECURITY|INTO|"
+    r"set_config|pg_terminate_backend|pg_cancel_backend|pg_reload_conf|"
+    r"lo_export|lo_import|pg_read_file|pg_write_file|nextval|setval)\b",
     re.IGNORECASE,
 )
 
@@ -36,8 +41,8 @@ def is_readonly_sql(sql: str) -> bool:
     head = s.split(None, 1)[0].upper()
     if head not in READONLY_PREFIXES:
         return False
-    # WITH may carry a writable CTE; EXPLAIN may explain a DML or use ANALYZE
-    # (which EXECUTES the statement). Scan those for modifying verbs.
-    if head in ("WITH", "EXPLAIN") and _MODIFY.search(s):
+    # Scan for modify/execute markers across EVERY accepted head (a plain SELECT
+    # can still create a table via INTO or execute a side-effecting function).
+    if _MODIFY.search(s):
         return False
     return True
