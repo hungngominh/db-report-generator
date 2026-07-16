@@ -15,7 +15,7 @@ def _now() -> str:
 
 def _scrub(message: str, cfg: DbConfig) -> str:
     out = message
-    for secret in (cfg.password, cfg.host):
+    for secret in (cfg.password, cfg.host, cfg.user):
         if secret:
             out = out.replace(secret, "«redacted»")
     return out

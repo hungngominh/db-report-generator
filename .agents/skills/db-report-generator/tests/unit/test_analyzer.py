@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.analyzer import analyze
+from scripts.analyzer import _scrub, analyze
 from scripts.lib.envparse import DbConfig
 from scripts.lib.schema import validation_errors
 from tests.pgcontainer import docker_available
@@ -36,6 +36,18 @@ def test_error_message_is_scrubbed_of_password(pg_dsn):
     report = analyze([_bad()])
     err = report["targets"][0]["error"]
     assert "s3cr3t-nope" not in err
+
+
+def test_scrub_redacts_password_host_and_user_when_present():
+    cfg = DbConfig(host="db.internal.example", port=5432, database="prod",
+                   user="appuser", password="s3cr3t-nope", project_name="p")
+    msg = ('connection to server at "db.internal.example" failed: '
+           'password authentication failed for user "appuser" (password=s3cr3t-nope)')
+    out = _scrub(msg, cfg)
+    assert "s3cr3t-nope" not in out
+    assert "db.internal.example" not in out
+    assert "appuser" not in out
+    assert "«redacted»" in out
 
 
 def test_metadata_present_but_no_time_in_diagnostics(pg_dsn):
