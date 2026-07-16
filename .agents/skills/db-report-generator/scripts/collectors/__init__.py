@@ -16,6 +16,10 @@ from scripts.collectors import index_bloat
 
 COLLECTORS["index_bloat"] = index_bloat.collect
 
+from scripts.collectors import dead_tuples
+
+COLLECTORS["dead_tuples"] = dead_tuples.collect
+
 
 def run_collectors(conn, caps, registry=None):
     """Run every collector with per-collector isolation.
