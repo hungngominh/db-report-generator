@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://db-report-generator/schemas/report-data-4.0.json",
+  "title": "db-report-generator report_data v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool_version", "run", "redaction_mode", "targets"],
+  "properties": {
+    "schema_version": {"const": "4.0"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "started_at", "completed_at"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "started_at": {"type": "string"},
+        "completed_at": {"type": ["string", "null"]}
+      }
+    },
+    "redaction_mode": {"enum": ["none", "hash", "redact"]},
+    "targets": {"type": "array", "items": {"$ref": "#/$defs/target"}}
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_id", "database", "collection_status", "capabilities", "diagnostics"],
+      "properties": {
+        "target_id": {"type": "string", "minLength": 1},
+        "database": {"type": "string"},
+        "collection_status": {"enum": ["ok", "partial", "error"]},
+        "error": {"type": ["string", "null"]},
+        "capabilities": {"type": "object"},
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/diagnostic"}
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collector_version", "scope", "status", "quality", "metrics", "findings"],
+      "properties": {
+        "collector_version": {"type": "string"},
+        "scope": {"enum": ["cluster", "database", "table", "index", "query"]},
+        "status": {"enum": ["ok", "partial", "skipped", "error"]},
+        "reason": {"type": ["string", "null"]},
+        "quality": {"$ref": "#/$defs/quality"},
+        "metrics": {"type": "array"},
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sampling_valid", "reset_detected", "insufficient_activity", "truncated"],
+      "properties": {
+        "sampling_valid": {"type": "boolean"},
+        "reset_detected": {"type": "boolean"},
+        "insufficient_activity": {"type": "boolean"},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "severity", "assessment", "confidence", "evidence_ids", "remediation_ids"],
+      "properties": {
+        "finding_id": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "notice", "warning", "critical"]},
+        "assessment": {"enum": ["green", "yellow", "red", "unknown", "not_applicable"]},
+        "confidence": {"enum": ["measured", "estimated", "heuristic"]},
+        "title": {"type": "string"},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "remediation_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
