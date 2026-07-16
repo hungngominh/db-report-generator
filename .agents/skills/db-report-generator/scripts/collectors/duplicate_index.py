@@ -9,7 +9,7 @@ SELECT rel.oid AS table_oid, ns.nspname AS schema, rel.relname AS tbl,
        ic.relname AS index_name, am.amname,
        i.indnkeyatts, i.indkey::text, i.indclass::text, i.indcollation::text,
        i.indoption::text,
-       (i.indexprs IS NOT NULL) AS has_expr,
+       COALESCE(pg_get_expr(i.indexprs, i.indrelid), '') AS exprs,
        COALESCE(i.indpred::text, '') AS pred,
        {nnd} AS nnd,
        i.indisprimary, i.indisunique, i.indisexclusion
@@ -34,13 +34,18 @@ def _rows(conn, caps):
 
 def _signature(r):
     return (r["table_oid"], r["amname"], r["indnkeyatts"], r["indkey"],
-            r["indclass"], r["indcollation"], r["indoption"], r["has_expr"],
+            r["indclass"], r["indcollation"], r["indoption"], r["exprs"],
             r["pred"], r["nnd"])
 
 
-def _key_cols(r):
-    # leading key columns only (indkey may carry INCLUDE cols beyond indnkeyatts)
-    return tuple(r["indkey"].split()[: r["indnkeyatts"]])
+def _key_desc(r):
+    # per key column: (attnum, opclass, collation, option) — excludes INCLUDE cols
+    n = r["indnkeyatts"]
+    keys = r["indkey"].split()[:n]
+    classes = r["indclass"].split()[:n]
+    colls = r["indcollation"].split()[:n]
+    opts = r["indoption"].split()[:n]
+    return tuple(zip(keys, classes, colls, opts))
 
 
 def collect(conn, caps):
@@ -71,7 +76,7 @@ def collect(conn, caps):
 
     # --- prefix redundancy: plain btree, A's key cols strict prefix of B's ---
     plain = [r for r in rows
-             if r["amname"] == "btree" and not r["has_expr"] and not r["pred"]
+             if r["amname"] == "btree" and not r["exprs"] and not r["pred"]
              and not r["indisprimary"] and not r["indisunique"]
              and not r["indisexclusion"]]
     by_table = defaultdict(list)
@@ -79,11 +84,11 @@ def collect(conn, caps):
         by_table[r["table_oid"]].append(r)
     for group in by_table.values():
         for a in group:
-            ka = _key_cols(a)
+            ka = _key_desc(a)
             for b in group:
                 if a["index_name"] == b["index_name"]:
                     continue
-                kb = _key_cols(b)
+                kb = _key_desc(b)
                 if len(ka) < len(kb) and kb[: len(ka)] == ka:
                     metrics.append({
                         "kind": "potentially_redundant",

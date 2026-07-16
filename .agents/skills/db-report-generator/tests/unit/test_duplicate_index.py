@@ -52,3 +52,38 @@ def test_prefix_redundancy_detected(pg_dsn):
     assert any(r["redundant"] == "dup_x_1" and r["covered_by"] == "dup_xy" for r in red)
     # a UNIQUE index is never called redundant
     assert all(r["redundant"] != "dup_z_uniq" for r in red)
+
+
+EXPR_DDL = """
+CREATE TABLE {s}.t (id int PRIMARY KEY, name text, other int);
+CREATE INDEX idx_lower ON {s}.t (lower(name));
+CREATE INDEX idx_upper ON {s}.t (upper(name));
+CREATE INDEX idx_pat ON {s}.t (name text_pattern_ops);
+CREATE INDEX idx_name_other ON {s}.t (name, other);
+"""
+
+
+def _run_ddl(pg_dsn, schema, ddl, version=160000):
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    try:
+        with make_schema(conn, schema, ddl):
+            diag = collect(conn, {"server_version_num": version})
+    finally:
+        conn.close()
+    return [m for m in diag["metrics"] if m["schema"] == schema]
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_different_expression_indexes_are_not_exact_duplicates(pg_dsn):
+    rows = _run_ddl(pg_dsn, "t_dup_expr", EXPR_DDL)
+    exact = [r for r in rows if r["kind"] == "exact_duplicate"]
+    for r in exact:
+        assert not {"idx_lower", "idx_upper"} <= set(r["members"])
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_prefix_redundancy_respects_opclass(pg_dsn):
+    rows = _run_ddl(pg_dsn, "t_dup_opclass", EXPR_DDL)
+    red = [r for r in rows if r["kind"] == "potentially_redundant"]
+    assert all(r["redundant"] != "idx_pat" for r in red)
