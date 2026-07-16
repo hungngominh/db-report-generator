@@ -1,0 +1,24 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pg: [14, 15, 16, 17, 18]
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg }}
+        env: {POSTGRES_PASSWORD: postgres}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: .agents/skills/db-report-generator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
