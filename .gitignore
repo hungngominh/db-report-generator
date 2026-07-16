@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets — never commit real connection configs (keep samples)
+.env
+**/.env
+
+# Subagent-driven scratch (ledger etc.)
+.superpowers/
+
+# OS
+.DS_Store
+Thumbs.db
