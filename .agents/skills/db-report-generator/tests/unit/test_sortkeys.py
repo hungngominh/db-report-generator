@@ -34,25 +34,25 @@ def test_iter_findings_sorted_severity_first(sample_report):
 
 
 def test_iter_findings_tiebreak_is_deterministic():
-    # Mọi finding cùng severity 'warning' → thứ tự phải rơi xuống
-    # (target_id, block, finding_id). Nếu sort bỏ bất kỳ khóa phụ nào,
-    # thứ tự này sẽ đổi → test fail. Đây là chốt cho total/stable ordering.
+    # Mọi finding cùng severity 'warning' → thứ tự rơi xuống (target_id, block, finding_id).
+    # Data được thiết kế để CẢ BA khóa phụ đều load-bearing: bỏ target_id, hoặc block,
+    # hoặc finding_id khỏi sort key đều làm đổi thứ tự kỳ vọng bên dưới.
     def wf(fid):
         return {"finding_id": fid, "severity": "warning", "assessment": "yellow",
                 "confidence": "measured", "evidence_ids": [], "remediation_ids": []}
     data = {
         "targets": [
-            {"target_id": "t-b", "diagnostics": {"gamma": {"findings": [wf("f9")]}}},
+            {"target_id": "t-b", "diagnostics": {"aaa": {"findings": [wf("f5")]}}},
             {"target_id": "t-a", "diagnostics": {
-                "beta": {"findings": [wf("f5")]},
-                "alpha": {"findings": [wf("f2"), wf("f1")]},
+                "zzz": {"findings": [wf("f1")]},
+                "aaa": {"findings": [wf("f9"), wf("f3")]},
             }},
         ]
     }
     keys = [(f["target_id"], f["block"], f["finding_id"]) for f in iter_findings(data)]
     assert keys == [
-        ("t-a", "alpha", "f1"),
-        ("t-a", "alpha", "f2"),
-        ("t-a", "beta", "f5"),
-        ("t-b", "gamma", "f9"),
+        ("t-a", "aaa", "f3"),
+        ("t-a", "aaa", "f9"),
+        ("t-a", "zzz", "f1"),
+        ("t-b", "aaa", "f5"),
     ]
