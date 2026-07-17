@@ -148,6 +148,34 @@ def test_latency_budget_silent_when_no_sampling_was_performed():
         _check_latency_budget(targets, elapsed_seconds=100.0)
 
 
+def test_sampler_failure_does_not_wipe_out_other_collectors(pg_dsn, monkeypatch):
+    if not docker_available():
+        pytest.skip("docker not available")
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+    finally:
+        conn.close()
+
+    from scripts import sampler
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated sampler failure")
+
+    monkeypatch.setattr(sampler, "sample_pg_stat_statements_window", boom)
+
+    report = analyze([_good(pg_dsn)])
+    target = report["targets"][0]
+    assert target["sampling"] is None
+    assert target["error"] is None
+    assert target["collection_status"] in ("ok", "partial")
+    assert target["diagnostics"]
+    assert all(d.get("status") != "error" for d in target["diagnostics"].values()
+               if d.get("status") is not None)
+
+
 def test_analyze_runs_multiple_targets_concurrently(monkeypatch):
     import time as time_module
 

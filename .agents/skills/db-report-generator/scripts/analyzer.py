@@ -73,14 +73,17 @@ def _analyze_target(cfg: DbConfig) -> dict:
             pgss = target["capabilities"].get("extensions", {}).get("pg_stat_statements")
             sampling_result = None
             if pgss:
-                sampling_result = sampler.sample_pg_stat_statements_window(
-                    conn, pgss["schema"], cfg.sampling_window_seconds)
-                target["sampling"] = {
-                    "window_seconds": sampling_result["window_seconds"],
-                    "sample1_at": sampling_result["sample1_at"],
-                    "sample2_at": sampling_result["sample2_at"],
-                    "reset_detected": sampling_result["reset_detected"],
-                }
+                try:
+                    sampling_result = sampler.sample_pg_stat_statements_window(
+                        conn, pgss["schema"], cfg.sampling_window_seconds)
+                    target["sampling"] = {
+                        "window_seconds": sampling_result["window_seconds"],
+                        "sample1_at": sampling_result["sample1_at"],
+                        "sample2_at": sampling_result["sample2_at"],
+                        "reset_detected": sampling_result["reset_detected"],
+                    }
+                except Exception:  # noqa: BLE001 - isolate sampler failure from other collectors
+                    sampling_result = None
             target["diagnostics"] = collectors.run_collectors(
                 conn, target["capabilities"], sampling=sampling_result)
             target["collection_status"] = _collection_status(target["diagnostics"])
