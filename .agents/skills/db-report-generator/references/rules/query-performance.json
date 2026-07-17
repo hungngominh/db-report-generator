@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "finding_id": "query_perf.slow_query_mean_exec_time",
+    "title": "Truy vấn có thời gian thực thi trung bình cao",
+    "severity": "warning",
+    "kind": "threshold",
+    "block": "query_stats",
+    "metric_key": "window_mean_exec_time_ms",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 1000, "yellow": 100},
+    "row_identity_fields": ["queryid"],
+    "confidence": "estimated"
+  },
+  {
+    "finding_id": "query_perf.index_cache_hit_ratio",
+    "title": "Tỷ lệ cache hit của index thấp",
+    "severity": "notice",
+    "kind": "threshold",
+    "block": "index_io",
+    "metric_key": "cache_hit_ratio",
+    "direction": "lower_is_worse",
+    "thresholds": {"red": 0.80, "yellow": 0.90},
+    "row_identity_fields": ["schema", "table", "index"],
+    "confidence": "measured"
+  }
+]
