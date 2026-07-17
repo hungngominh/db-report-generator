@@ -6,7 +6,8 @@ import uuid
 import warnings
 from datetime import datetime, timezone
 
-from scripts import capabilities, collectors, rules, sampler
+from scripts import capabilities, collectors, explain, index_advisor, rules, sampler
+from scripts.collectors import base
 from scripts.lib import db, invariants, schema
 from scripts.lib.envparse import DbConfig
 
@@ -89,6 +90,23 @@ def _analyze_target(cfg: DbConfig) -> dict:
                     sampling_result = None
             target["diagnostics"] = collectors.run_collectors(
                 conn, target["capabilities"], sampling=sampling_result)
+            query_stats_diag = target["diagnostics"].get("query_stats")
+            try:
+                target["diagnostics"]["explain"] = explain.run(
+                    conn, target["capabilities"], query_stats_diag,
+                    mode=cfg.explain_mode, top_n=cfg.explain_top_n,
+                    analyze_top_n=cfg.explain_analyze_top_n,
+                    statement_timeout_ms=cfg.explain_statement_timeout_ms,
+                    lock_timeout_ms=cfg.explain_lock_timeout_ms)
+            except Exception as exc:  # noqa: BLE001 - isolate EXPLAIN failure from other collectors
+                target["diagnostics"]["explain"] = base.diagnostic(
+                    "query", "error", [], reason=type(exc).__name__)
+            try:
+                target["diagnostics"]["index_advisor"] = index_advisor.run(
+                    conn, query_stats_diag, top_n=cfg.explain_top_n)
+            except Exception as exc:  # noqa: BLE001 - isolate index-advisor failure from other collectors
+                target["diagnostics"]["index_advisor"] = base.diagnostic(
+                    "table", "error", [], reason=type(exc).__name__)
             try:
                 rules.evaluate_target(target)
             except Exception:  # noqa: BLE001 - isolate rule-evaluation failure from collection status

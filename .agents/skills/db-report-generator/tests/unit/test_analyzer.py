@@ -298,3 +298,134 @@ def test_analyze_raises_on_b3_violation(monkeypatch):
 
     with pytest.raises(RuntimeError, match="B3"):
         analyzer.analyze([cfg])
+
+
+def test_analyze_target_wires_explain_and_index_advisor_into_diagnostics(monkeypatch):
+    from scripts import analyzer
+
+    class FakeConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analyzer.db, "connect", lambda cfg: FakeConn())
+    monkeypatch.setattr(analyzer.capabilities, "probe", lambda conn: {"extensions": {}})
+    fake_query_stats = {
+        "collector_version": "1", "scope": "query", "status": "ok", "reason": None,
+        "quality": {"sampling_valid": True, "reset_detected": False,
+                    "insufficient_activity": False, "truncated": False},
+        "metrics": [], "findings": [],
+    }
+    monkeypatch.setattr(analyzer.collectors, "run_collectors",
+                         lambda conn, caps, sampling=None: {"query_stats": fake_query_stats})
+
+    captured = {}
+
+    def fake_explain_run(conn, caps, query_stats_diag, *, mode, top_n, analyze_top_n,
+                          statement_timeout_ms, lock_timeout_ms):
+        captured["explain_args"] = (mode, top_n, analyze_top_n, statement_timeout_ms, lock_timeout_ms)
+        captured["explain_query_stats"] = query_stats_diag
+        return {"collector_version": "1", "scope": "query", "status": "ok", "reason": None,
+                "quality": None, "metrics": [], "findings": []}
+
+    def fake_index_advisor_run(conn, query_stats_diag, *, top_n):
+        captured["index_advisor_top_n"] = top_n
+        return {"collector_version": "1", "scope": "table", "status": "ok", "reason": None,
+                "quality": None, "metrics": [], "findings": []}
+
+    monkeypatch.setattr(analyzer.explain, "run", fake_explain_run)
+    monkeypatch.setattr(analyzer.index_advisor, "run", fake_index_advisor_run)
+
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p",
+                   explain_mode="plan", explain_top_n=3, explain_analyze_top_n=1,
+                   explain_statement_timeout_ms=3000, explain_lock_timeout_ms=500)
+
+    target = analyzer._analyze_target(cfg)
+
+    assert target["diagnostics"]["explain"]["status"] == "ok"
+    assert target["diagnostics"]["index_advisor"]["status"] == "ok"
+    assert captured["explain_args"] == ("plan", 3, 1, 3000, 500)
+    assert captured["explain_query_stats"] is fake_query_stats
+    assert captured["index_advisor_top_n"] == 3
+
+
+def test_explain_failure_does_not_wipe_out_other_diagnostics(monkeypatch):
+    from scripts import analyzer
+
+    class FakeConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analyzer.db, "connect", lambda cfg: FakeConn())
+    monkeypatch.setattr(analyzer.capabilities, "probe", lambda conn: {"extensions": {}})
+    fake_diagnostics = {
+        "database_stats": {
+            "collector_version": "1", "scope": "database", "status": "ok", "reason": None,
+            "quality": {"sampling_valid": True, "reset_detected": False,
+                        "insufficient_activity": False, "truncated": False},
+            "metrics": [{"cache_hit_ratio": 0.9}], "findings": [],
+        },
+    }
+    monkeypatch.setattr(analyzer.collectors, "run_collectors",
+                         lambda conn, caps, sampling=None: fake_diagnostics)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated explain failure")
+
+    monkeypatch.setattr(analyzer.explain, "run", boom)
+    monkeypatch.setattr(analyzer.index_advisor, "run",
+                         lambda conn, query_stats_diag, *, top_n: {
+                             "collector_version": "1", "scope": "table", "status": "ok",
+                             "reason": None, "quality": None, "metrics": [], "findings": []})
+
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p")
+
+    target = analyzer._analyze_target(cfg)
+
+    assert target["diagnostics"]["explain"]["status"] == "error"
+    assert target["diagnostics"]["explain"]["reason"] == "RuntimeError"
+    assert target["diagnostics"]["database_stats"]["metrics"] == [{"cache_hit_ratio": 0.9}]
+    assert target["diagnostics"]["index_advisor"]["status"] == "ok"
+    assert target["collection_status"] == "partial"
+    assert target["error"] is None
+
+
+def test_index_advisor_failure_does_not_wipe_out_other_diagnostics(monkeypatch):
+    from scripts import analyzer
+
+    class FakeConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analyzer.db, "connect", lambda cfg: FakeConn())
+    monkeypatch.setattr(analyzer.capabilities, "probe", lambda conn: {"extensions": {}})
+    fake_diagnostics = {
+        "database_stats": {
+            "collector_version": "1", "scope": "database", "status": "ok", "reason": None,
+            "quality": {"sampling_valid": True, "reset_detected": False,
+                        "insufficient_activity": False, "truncated": False},
+            "metrics": [{"cache_hit_ratio": 0.9}], "findings": [],
+        },
+    }
+    monkeypatch.setattr(analyzer.collectors, "run_collectors",
+                         lambda conn, caps, sampling=None: fake_diagnostics)
+    monkeypatch.setattr(analyzer.explain, "run",
+                         lambda conn, caps, query_stats_diag, *, mode, top_n, analyze_top_n,
+                                statement_timeout_ms, lock_timeout_ms: {
+                             "collector_version": "1", "scope": "query", "status": "ok",
+                             "reason": None, "quality": None, "metrics": [], "findings": []})
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated index-advisor failure")
+
+    monkeypatch.setattr(analyzer.index_advisor, "run", boom)
+
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p")
+
+    target = analyzer._analyze_target(cfg)
+
+    assert target["diagnostics"]["index_advisor"]["status"] == "error"
+    assert target["diagnostics"]["index_advisor"]["reason"] == "RuntimeError"
+    assert target["diagnostics"]["explain"]["status"] == "ok"
+    assert target["diagnostics"]["database_stats"]["metrics"] == [{"cache_hit_ratio": 0.9}]
+    assert target["collection_status"] == "partial"
+    assert target["error"] is None
