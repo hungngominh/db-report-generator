@@ -44,6 +44,10 @@ from scripts.collectors import checkpoint_activity
 
 COLLECTORS["checkpoint_activity"] = checkpoint_activity.collect
 
+from scripts.collectors import wal_hot
+
+COLLECTORS["wal_hot"] = wal_hot.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
