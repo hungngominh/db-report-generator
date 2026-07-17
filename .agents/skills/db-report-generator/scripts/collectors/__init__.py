@@ -28,6 +28,54 @@ from scripts.collectors import query_stats
 
 COLLECTORS["query_stats"] = query_stats.collect
 
+from scripts.collectors import wraparound
+
+COLLECTORS["wraparound"] = wraparound.collect
+
+from scripts.collectors import database_stats
+
+COLLECTORS["database_stats"] = database_stats.collect
+
+from scripts.collectors import wait_events
+
+COLLECTORS["wait_events"] = wait_events.collect
+
+from scripts.collectors import checkpoint_activity
+
+COLLECTORS["checkpoint_activity"] = checkpoint_activity.collect
+
+from scripts.collectors import wal_hot
+
+COLLECTORS["wal_hot"] = wal_hot.collect
+
+from scripts.collectors import index_io
+
+COLLECTORS["index_io"] = index_io.collect
+
+from scripts.collectors import stale_stats
+
+COLLECTORS["stale_stats"] = stale_stats.collect
+
+from scripts.collectors import connection_depth
+
+COLLECTORS["connection_depth"] = connection_depth.collect
+
+from scripts.collectors import replication
+
+COLLECTORS["replication"] = replication.collect
+
+from scripts.collectors import blocking
+
+COLLECTORS["blocking"] = blocking.collect
+
+from scripts.collectors import vacuum_horizon
+
+COLLECTORS["vacuum_horizon"] = vacuum_horizon.collect
+
+from scripts.collectors import stat_io
+
+COLLECTORS["stat_io"] = stat_io.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.

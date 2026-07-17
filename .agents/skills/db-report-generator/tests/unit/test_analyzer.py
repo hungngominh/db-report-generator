@@ -1,5 +1,7 @@
 import pytest
 
+import json
+
 import warnings
 
 import dataclasses
@@ -27,6 +29,7 @@ def test_analyze_output_is_schema_valid_and_isolates_failures(pg_dsn):
         pytest.skip("docker not available")
     report = analyze([_good(pg_dsn), _bad()])
     assert validation_errors(report) == []
+    json.dumps(report)  # Decimal (numeric EXTRACT results) is not JSON-serializable — regression guard
     by_id = {t["target_id"]: t for t in report["targets"]}
     assert by_id["good"]["collection_status"] == "ok"
     assert by_id["good"]["capabilities"]["server_version_num"] >= 140000
@@ -197,3 +200,12 @@ def test_analyze_runs_multiple_targets_concurrently(monkeypatch):
     assert {t["target_id"] for t in report["targets"]} == {"p0", "p1", "p2", "p3"}
     # 4 targets x 0.2s would be 0.8s fully serial; bounded-parallel keeps it near 0.2s.
     assert elapsed < 0.6
+
+
+def test_analyze_wires_configured_pool_size_from_raw_env(pg_dsn):
+    if not docker_available():
+        pytest.skip("docker not available")
+    cfg = dataclasses.replace(_good(pg_dsn))
+    cfg.raw["PoolSize"] = 15
+    report = analyze([cfg])
+    assert report["targets"][0]["capabilities"]["configured_pool_size"] == 15

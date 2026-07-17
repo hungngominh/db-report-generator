@@ -21,6 +21,8 @@ def _check_latency_budget(targets: list, elapsed_seconds: float) -> None:
     i.e. total elapsed time is suspiciously close to what a fully serial
     N x window_seconds run would take.
     """
+    # Known gap: total_window only accounts for pg_stat_statements sampling —
+    # it does not include wait_events' fixed per-target sampling cost (see wait_events.py).
     total_window = sum((t.get("sampling") or {}).get("window_seconds", 0) for t in targets)
     if len(targets) > 1 and total_window > 0 and elapsed_seconds > total_window * _LATENCY_WARNING_RATIO:
         warnings.warn(
@@ -70,6 +72,7 @@ def _analyze_target(cfg: DbConfig) -> dict:
         conn = db.connect(cfg)
         try:
             target["capabilities"] = capabilities.probe(conn)
+            target["capabilities"]["configured_pool_size"] = cfg.raw.get("PoolSize")
             pgss = target["capabilities"].get("extensions", {}).get("pg_stat_statements")
             sampling_result = None
             if pgss:
