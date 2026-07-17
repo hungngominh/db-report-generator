@@ -32,6 +32,10 @@ from scripts.collectors import wraparound
 
 COLLECTORS["wraparound"] = wraparound.collect
 
+from scripts.collectors import database_stats
+
+COLLECTORS["database_stats"] = database_stats.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
