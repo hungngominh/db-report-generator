@@ -22,6 +22,7 @@ WHERE con.contype = 'f'
   AND NOT EXISTS (
     SELECT 1 FROM pg_index i
     WHERE i.indrelid = con.conrelid
+      AND i.indisvalid
       AND i.indpred IS NULL
       AND i.indexprs IS NULL
       AND i.indnkeyatts >= array_length(con.conkey, 1)
