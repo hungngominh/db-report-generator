@@ -100,9 +100,20 @@ def _eval_ratio_threshold(rule, metrics, gated) -> list:
     return findings
 
 
+def _eval_presence(rule, metrics, gated) -> list:
+    findings = []
+    for row in metrics:
+        row_id = _row_identity(row, rule.get("row_identity_fields", []))
+        findings.append(_make_finding(
+            rule, assessment=rule["assessment"], confidence=rule["confidence"],
+            row_id=row_id, evidence=[], gated=gated))
+    return findings
+
+
 _EVALUATORS = {
     "threshold": _eval_threshold,
     "ratio_threshold": _eval_ratio_threshold,
+    "presence": _eval_presence,
 }
 
 

@@ -134,3 +134,36 @@ def test_evaluate_target_writes_findings_into_each_diagnostic(monkeypatch):
     rules.evaluate_target(target)
     assert len(target["diagnostics"]["some_block"]["findings"]) == 1
     assert target["diagnostics"]["other_block"]["findings"] == []
+
+
+_PRESENCE_RULE = {
+    "finding_id": "test.presence", "title": "Test presence issue", "severity": "notice",
+    "kind": "presence", "block": "some_block", "assessment": "yellow",
+    "row_identity_fields": ["schema", "table"], "confidence": "measured",
+}
+
+
+def test_eval_presence_fires_once_per_row():
+    metrics = [{"schema": "public", "table": "a"}, {"schema": "public", "table": "b"}]
+    findings = rules._eval_presence(_PRESENCE_RULE, metrics, gated=False)
+    assert len(findings) == 2
+    assert {f["finding_id"] for f in findings} == {"test.presence:public:a", "test.presence:public:b"}
+    assert all(f["assessment"] == "yellow" for f in findings)
+    assert all(f["evidence_ids"] == [] for f in findings)
+
+
+def test_eval_presence_empty_metrics_fires_nothing():
+    assert rules._eval_presence(_PRESENCE_RULE, [], gated=False) == []
+
+
+def test_eval_presence_gated_forces_unknown_heuristic():
+    findings = rules._eval_presence(_PRESENCE_RULE, [{"schema": "public", "table": "a"}], gated=True)
+    assert findings[0]["assessment"] == "unknown"
+    assert findings[0]["confidence"] == "heuristic"
+
+
+def test_presence_kind_dispatches_through_evaluate_diagnostic():
+    diag = {"status": "ok", "quality": _quality(), "metrics": [{"schema": "public", "table": "a"}]}
+    findings = rules.evaluate_diagnostic("some_block", diag, {"some_block": [_PRESENCE_RULE]})
+    assert len(findings) == 1
+    assert findings[0]["finding_id"] == "test.presence:public:a"
