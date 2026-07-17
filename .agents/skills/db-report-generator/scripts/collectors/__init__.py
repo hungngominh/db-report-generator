@@ -28,6 +28,10 @@ from scripts.collectors import query_stats
 
 COLLECTORS["query_stats"] = query_stats.collect
 
+from scripts.collectors import wraparound
+
+COLLECTORS["wraparound"] = wraparound.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
