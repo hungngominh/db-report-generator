@@ -3,7 +3,7 @@ from scripts.collectors import base
 
 _BACKEND_SQL = """
 SELECT pid, usename, state, age(backend_xmin),
-       EXTRACT(EPOCH FROM (now() - xact_start))
+       EXTRACT(EPOCH FROM (now() - xact_start))::float8
 FROM pg_stat_activity
 WHERE backend_xmin IS NOT NULL AND datname = current_database()
 ORDER BY age(backend_xmin) DESC

@@ -1,5 +1,7 @@
 import pytest
 
+import json
+
 import warnings
 
 import dataclasses
@@ -27,6 +29,7 @@ def test_analyze_output_is_schema_valid_and_isolates_failures(pg_dsn):
         pytest.skip("docker not available")
     report = analyze([_good(pg_dsn), _bad()])
     assert validation_errors(report) == []
+    json.dumps(report)  # Decimal (numeric EXTRACT results) is not JSON-serializable — regression guard
     by_id = {t["target_id"]: t for t in report["targets"]}
     assert by_id["good"]["collection_status"] == "ok"
     assert by_id["good"]["capabilities"]["server_version_num"] >= 140000

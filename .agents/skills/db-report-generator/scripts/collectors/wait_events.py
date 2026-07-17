@@ -6,6 +6,8 @@ from scripts.collectors import base
 
 SAMPLES = 5
 INTERVAL_SECONDS = 1.0
+# This fixed ~SAMPLES*INTERVAL_SECONDS per-target sleep is not counted by
+# analyzer._check_latency_budget's B4 warning (that only sums sampling.window_seconds).
 
 _SQL = """
 SELECT wait_event_type, wait_event

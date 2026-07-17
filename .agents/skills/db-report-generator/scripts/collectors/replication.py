@@ -3,7 +3,9 @@ from scripts.collectors import base
 
 _SLOTS_SQL = """
 SELECT slot_name, slot_type, active, wal_status,
-       pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint AS retained_wal_bytes
+       CASE WHEN pg_is_in_recovery() THEN NULL
+            ELSE pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)
+       END::bigint AS retained_wal_bytes
 FROM pg_replication_slots
 """
 

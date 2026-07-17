@@ -8,7 +8,7 @@ SELECT
     count(*) AS cluster_connections,
     count(*) FILTER (WHERE datname = current_database() AND state = 'idle in transaction')
         AS idle_in_transaction,
-    max(EXTRACT(EPOCH FROM (now() - xact_start)))
+    max(EXTRACT(EPOCH FROM (now() - xact_start))::float8)
         FILTER (WHERE datname = current_database() AND xact_start IS NOT NULL) AS longest_txn_seconds
 FROM pg_stat_activity
 """

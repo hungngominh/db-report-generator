@@ -4,7 +4,7 @@ from scripts.collectors import base
 _SQL = """
 SELECT blocked.pid, blocked.usename, blocking.pid, blocking.usename,
        blocked.query, blocking.query,
-       EXTRACT(EPOCH FROM (now() - blocked.query_start))
+       EXTRACT(EPOCH FROM (now() - blocked.query_start))::float8
 FROM pg_stat_activity blocked
 JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS bp(pid) ON true
 JOIN pg_stat_activity blocking ON blocking.pid = bp.pid
