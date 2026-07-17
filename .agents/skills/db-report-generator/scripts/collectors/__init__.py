@@ -52,6 +52,10 @@ from scripts.collectors import index_io
 
 COLLECTORS["index_io"] = index_io.collect
 
+from scripts.collectors import stale_stats
+
+COLLECTORS["stale_stats"] = stale_stats.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
