@@ -64,6 +64,10 @@ from scripts.collectors import replication
 
 COLLECTORS["replication"] = replication.collect
 
+from scripts.collectors import blocking
+
+COLLECTORS["blocking"] = blocking.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
