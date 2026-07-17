@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "finding_id": "security_rls.rls_policy_issue",
+    "title": "Vấn đề chính sách Row Level Security",
+    "severity": "warning",
+    "kind": "presence",
+    "block": "rls_policies",
+    "assessment": "yellow",
+    "row_identity_fields": ["schema", "table", "policy", "clause", "issue", "function", "column"],
+    "confidence": "measured"
+  }
+]

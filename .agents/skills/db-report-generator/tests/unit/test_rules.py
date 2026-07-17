@@ -180,11 +180,10 @@ def test_every_rule_block_is_a_real_collector():
             assert rule["block"] in known_blocks, f"{axis}/{rule['finding_id']} references unknown block {rule['block']!r}"
 
 
-def test_security_rls_is_an_intentional_empty_placeholder():
-    # No P0-P2 collector inspects Row Level Security policies (that's P4.3).
-    # This axis is deliberately empty in P3, not a forgotten TODO.
+def test_security_rls_has_the_p4_rls_policy_rule():
     catalog = rules.load_catalog()
-    assert catalog["security-rls"] == []
+    ids = {r["finding_id"] for r in catalog["security-rls"]}
+    assert ids == {"security_rls.rls_policy_issue"}
 
 
 def test_axes_match_spec_section_8_order():
