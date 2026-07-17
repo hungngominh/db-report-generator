@@ -72,6 +72,10 @@ from scripts.collectors import vacuum_horizon
 
 COLLECTORS["vacuum_horizon"] = vacuum_horizon.collect
 
+from scripts.collectors import stat_io
+
+COLLECTORS["stat_io"] = stat_io.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
