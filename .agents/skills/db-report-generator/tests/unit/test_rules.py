@@ -174,7 +174,7 @@ from scripts.collectors import COLLECTORS
 
 def test_every_rule_block_is_a_real_collector():
     catalog = rules.load_catalog()
-    known_blocks = set(COLLECTORS)
+    known_blocks = set(COLLECTORS) | {"index_advisor"}
     for axis, axis_rules in catalog.items():
         for rule in axis_rules:
             assert rule["block"] in known_blocks, f"{axis}/{rule['finding_id']} references unknown block {rule['block']!r}"

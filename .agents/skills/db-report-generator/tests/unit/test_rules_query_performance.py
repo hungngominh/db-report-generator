@@ -69,3 +69,13 @@ def test_index_cache_hit_ratio_yellow_below_90_percent():
     assert len(findings) == 1
     assert findings[0]["assessment"] == "yellow"
     assert findings[0]["finding_id"] == "query_perf.index_cache_hit_ratio:public:t:t_idx"
+
+
+def test_suggested_column_index_fires_yellow():
+    diag = {"status": "ok", "quality": _quality(),
+            "metrics": [{"schema": "public", "table": "orders", "suggested_columns": ["org_id"],
+                         "suggested_ddl": "-- needs-review: CREATE INDEX ...", "queryid": "1"}]}
+    findings = rules.evaluate_diagnostic("index_advisor", diag, _rules_by_block())
+    assert len(findings) == 1
+    assert findings[0]["assessment"] == "yellow"
+    assert findings[0]["finding_id"] == "query_perf.suggested_column_index:public:orders:1"

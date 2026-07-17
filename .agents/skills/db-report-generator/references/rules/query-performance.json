@@ -22,5 +22,15 @@
     "thresholds": {"red": 0.80, "yellow": 0.90},
     "row_identity_fields": ["schema", "table", "index"],
     "confidence": "measured"
+  },
+  {
+    "finding_id": "query_perf.suggested_column_index",
+    "title": "Gợi ý index cấp cột cho truy vấn chậm",
+    "severity": "notice",
+    "kind": "presence",
+    "block": "index_advisor",
+    "assessment": "yellow",
+    "row_identity_fields": ["schema", "table", "queryid"],
+    "confidence": "heuristic"
   }
 ]
