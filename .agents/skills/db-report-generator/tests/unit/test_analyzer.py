@@ -24,7 +24,9 @@ def test_analyze_output_is_schema_valid_and_isolates_failures(pg_dsn):
     by_id = {t["target_id"]: t for t in report["targets"]}
     assert by_id["good"]["collection_status"] == "ok"
     assert by_id["good"]["capabilities"]["server_version_num"] >= 140000
-    assert by_id["good"]["diagnostics"] == {}
+    # a healthy target: no collector errored (skipped is legitimate, e.g. a
+    # collector whose required extension isn't installed)
+    assert all(d["status"] != "error" for d in by_id["good"]["diagnostics"].values())
     # one dead target does not kill the run
     assert by_id["bad"]["collection_status"] == "error"
     assert by_id["bad"]["error"]

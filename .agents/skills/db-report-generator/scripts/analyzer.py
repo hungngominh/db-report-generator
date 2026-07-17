@@ -3,7 +3,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from scripts import capabilities
+from scripts import capabilities, collectors
 from scripts.lib import db, schema
 from scripts.lib.envparse import DbConfig
 
@@ -30,6 +30,12 @@ def _scrub(message: str, cfg: DbConfig) -> str:
     return out
 
 
+def _collection_status(diagnostics: dict) -> str:
+    if any(d.get("status") == "error" for d in diagnostics.values()):
+        return "partial"
+    return "ok"
+
+
 def _analyze_target(cfg: DbConfig) -> dict:
     target = {
         "target_id": cfg.project_name or cfg.database,
@@ -43,6 +49,8 @@ def _analyze_target(cfg: DbConfig) -> dict:
         conn = db.connect(cfg)
         try:
             target["capabilities"] = capabilities.probe(conn)
+            target["diagnostics"] = collectors.run_collectors(conn, target["capabilities"])
+            target["collection_status"] = _collection_status(target["diagnostics"])
         finally:
             conn.close()
     except Exception as exc:  # noqa: BLE001 - isolate per-target failure
