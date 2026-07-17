@@ -63,3 +63,44 @@ def test_bad_assessment_enum_rejected():
         ],
     }
     assert validation_errors(bad)
+
+
+_BASE_TARGET = {
+    "target_id": "t1", "database": "db", "collection_status": "ok",
+    "capabilities": {}, "diagnostics": {},
+}
+
+
+def test_target_sampling_null_is_valid():
+    ok = {**MINIMAL, "targets": [{**_BASE_TARGET, "sampling": None}]}
+    assert validation_errors(ok) == []
+
+
+def test_target_sampling_object_is_valid():
+    ok = {**MINIMAL, "targets": [{**_BASE_TARGET, "sampling": {
+        "window_seconds": 30, "sample1_at": "2026-07-17T00:00:00Z",
+        "sample2_at": "2026-07-17T00:00:30Z", "reset_detected": False,
+    }}]}
+    assert validation_errors(ok) == []
+
+
+def test_target_sampling_missing_is_still_valid():
+    # sampling is optional (not in target.required) — targets that skip
+    # sampling entirely (no pg_stat_statements) must stay schema-valid.
+    ok = {**MINIMAL, "targets": [_BASE_TARGET]}
+    assert validation_errors(ok) == []
+
+
+def test_target_sampling_extra_field_rejected():
+    bad = {**MINIMAL, "targets": [{**_BASE_TARGET, "sampling": {
+        "window_seconds": 30, "sample1_at": "t1", "sample2_at": "t2",
+        "reset_detected": False, "extra": 1,
+    }}]}
+    assert validation_errors(bad)
+
+
+def test_target_sampling_missing_required_subfield_rejected():
+    bad = {**MINIMAL, "targets": [{**_BASE_TARGET, "sampling": {
+        "window_seconds": 30, "sample1_at": "t1", "reset_detected": False,
+    }}]}
+    assert validation_errors(bad)

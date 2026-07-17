@@ -35,6 +35,17 @@
         "diagnostics": {
           "type": "object",
           "additionalProperties": {"$ref": "#/$defs/diagnostic"}
+        },
+        "sampling": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["window_seconds", "sample1_at", "sample2_at", "reset_detected"],
+          "properties": {
+            "window_seconds": {"type": "integer", "minimum": 0},
+            "sample1_at": {"type": "string"},
+            "sample2_at": {"type": "string"},
+            "reset_detected": {"type": "boolean"}
+          }
         }
       }
     },
