@@ -60,6 +60,10 @@ from scripts.collectors import connection_depth
 
 COLLECTORS["connection_depth"] = connection_depth.collect
 
+from scripts.collectors import replication
+
+COLLECTORS["replication"] = replication.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
