@@ -92,3 +92,15 @@ def test_is_analyze_safe_false_for_cte_nested_for_update():
     safe, reason = sql_classify.is_analyze_safe(stmt)
     assert safe is False
     assert reason == "locking_clause"
+
+
+def test_is_analyze_safe_false_for_select_into():
+    stmt = sql_classify.parse_statement("select * into new_table from orders")
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "select_into"
+
+
+def test_is_analyze_safe_true_for_plain_select_unaffected_by_select_into_check():
+    stmt = sql_classify.parse_statement("select * from orders where id = 5")
+    assert sql_classify.is_analyze_safe(stmt) == (True, None)

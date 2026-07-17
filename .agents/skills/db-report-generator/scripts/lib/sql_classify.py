@@ -139,11 +139,20 @@ def is_analyze_safe(stmt) -> tuple:
     parse as a top-level SelectStmt with the DeleteStmt/UpdateStmt/
     InsertStmt/MergeStmt nested inside withClause.ctes[...].ctequery, and
     likewise supports a locking clause on a non-recursive CTE's own
-    SelectStmt."""
+    SelectStmt.
+
+    The legacy `SELECT ... INTO new_table FROM ...` syntax also parses as
+    a plain SelectStmt (distinct from CREATE TABLE AS, which parses as a
+    separate CreateTableAsStmt node already caught by not_a_select) but
+    populates stmt.intoClause and, under ANALYZE, actually creates and
+    populates the target table -- a real side effect -- so it must be
+    rejected explicitly here rather than falling through as a read."""
     if stmt is None:
         return False, "unparseable"
     if not isinstance(stmt, ast.SelectStmt):
         return False, "not_a_select"
+    if stmt.intoClause:
+        return False, "select_into"
     write_finder = _WriteStmtFinder()
     write_finder(stmt)
     if write_finder.hit:
