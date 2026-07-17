@@ -3,7 +3,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from scripts import capabilities, collectors
+from scripts import capabilities, collectors, sampler
 from scripts.lib import db, schema
 from scripts.lib.envparse import DbConfig
 
@@ -43,13 +43,26 @@ def _analyze_target(cfg: DbConfig) -> dict:
         "collection_status": "ok",
         "error": None,
         "capabilities": {},
-        "diagnostics": {},  # collectors land here in Phase 0b
+        "diagnostics": {},
+        "sampling": None,
     }
     try:
         conn = db.connect(cfg)
         try:
             target["capabilities"] = capabilities.probe(conn)
-            target["diagnostics"] = collectors.run_collectors(conn, target["capabilities"])
+            pgss = target["capabilities"].get("extensions", {}).get("pg_stat_statements")
+            sampling_result = None
+            if pgss:
+                sampling_result = sampler.sample_pg_stat_statements_window(
+                    conn, pgss["schema"], cfg.sampling_window_seconds)
+                target["sampling"] = {
+                    "window_seconds": sampling_result["window_seconds"],
+                    "sample1_at": sampling_result["sample1_at"],
+                    "sample2_at": sampling_result["sample2_at"],
+                    "reset_detected": sampling_result["reset_detected"],
+                }
+            target["diagnostics"] = collectors.run_collectors(
+                conn, target["capabilities"], sampling=sampling_result)
             target["collection_status"] = _collection_status(target["diagnostics"])
         finally:
             conn.close()

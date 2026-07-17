@@ -1,5 +1,9 @@
 import pytest
 
+import dataclasses
+
+import psycopg2
+
 from scripts.analyzer import _scrub, analyze
 from scripts.lib.envparse import DbConfig
 from scripts.lib.schema import validation_errors
@@ -80,3 +84,30 @@ def test_scrub_strips_ipv6_literal():
                    user="u", password="pw", project_name="p")
     out = _scrub('server at "localhost" (::1), port 1 failed', cfg)
     assert "::1" not in out
+
+
+def test_analyze_target_sampling_is_none_when_pg_stat_statements_absent(pg_dsn):
+    if not docker_available():
+        pytest.skip("docker not available")
+    report = analyze([_good(pg_dsn)])
+    target = report["targets"][0]
+    assert target["sampling"] is None
+
+
+def test_analyze_populates_sampling_metadata_when_pg_stat_statements_present(pg_dsn):
+    if not docker_available():
+        pytest.skip("docker not available")
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+    finally:
+        conn.close()
+    cfg = dataclasses.replace(_good(pg_dsn), sampling_window_seconds=0)
+    report = analyze([cfg])
+    target = report["targets"][0]
+    assert target["sampling"] is not None
+    assert target["sampling"]["window_seconds"] == 0
+    assert target["sampling"]["reset_detected"] is False
+    assert target["diagnostics"]["query_stats"]["status"] == "ok"

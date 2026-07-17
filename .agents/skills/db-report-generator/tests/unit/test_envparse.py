@@ -42,3 +42,12 @@ def test_missing_required_key_raises():
     data = {k: v for k, v in SAMPLE.items() if k != "ServerName"}
     with pytest.raises(ValueError):
         parse_env(json.dumps(data))
+
+
+def test_sampling_window_seconds_defaults_to_30():
+    assert parse_env(json.dumps(SAMPLE)).sampling_window_seconds == 30
+
+
+def test_sampling_window_seconds_reads_custom_value():
+    data = {**SAMPLE, "SamplingWindowSeconds": 45}
+    assert parse_env(json.dumps(data)).sampling_window_seconds == 45

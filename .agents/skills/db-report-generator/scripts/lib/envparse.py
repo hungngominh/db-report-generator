@@ -15,6 +15,7 @@ class DbConfig:
     password: str
     project_name: str = ""
     code_path: str = ""
+    sampling_window_seconds: int = 30
     raw: dict = field(default_factory=dict)
 
 
@@ -35,5 +36,6 @@ def parse_env(source) -> DbConfig:
         password=str(data["Password"]),
         project_name=str(data.get("ProjectName", "")),
         code_path=str(data.get("CodePath", "")),
+        sampling_window_seconds=int(data.get("SamplingWindowSeconds", 30)),
         raw=data,
     )
