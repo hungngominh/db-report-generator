@@ -1,1 +1,52 @@
-[]
+[
+  {
+    "finding_id": "connections.cluster_pressure",
+    "title": "Áp lực kết nối toàn cluster cao",
+    "severity": "warning",
+    "kind": "ratio_threshold",
+    "block": "connection_depth",
+    "numerator_key": "cluster_connections",
+    "denominator_key": "cluster_max_connections",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 0.90, "yellow": 0.60},
+    "row_identity_fields": [],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "connections.pool_pressure",
+    "title": "Áp lực connection pool của ứng dụng cao",
+    "severity": "warning",
+    "kind": "ratio_threshold",
+    "block": "connection_depth",
+    "numerator_key": "db_connections",
+    "denominator_key": "configured_pool_size",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 0.90, "yellow": 0.60},
+    "row_identity_fields": [],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "connections.idle_in_transaction",
+    "title": "Có giao dịch idle-in-transaction kéo dài",
+    "severity": "warning",
+    "kind": "threshold",
+    "block": "connection_depth",
+    "metric_key": "longest_txn_seconds",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 600, "yellow": 60},
+    "row_identity_fields": [],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "connections.blocking",
+    "title": "Có phiên bị block kéo dài",
+    "severity": "critical",
+    "kind": "threshold",
+    "block": "blocking",
+    "metric_key": "blocked_duration_seconds",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 30, "yellow": 5},
+    "row_identity_fields": ["blocked_pid", "blocking_pid"],
+    "confidence": "measured"
+  }
+]
