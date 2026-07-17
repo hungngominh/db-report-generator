@@ -92,11 +92,52 @@ def compute_deltas(snap1: dict, snap2: dict) -> dict:
 
 
 def snapshot_pg_stat_statements(conn, schema: str) -> dict:
-    """Placeholder — implemented in Task 3."""
-    raise NotImplementedError
+    """One point-in-time snapshot of pg_stat_statements + its reset marker +
+    the server start time (spec §0.A2 restart detection). Each call is its
+    own read-only autocommit statement — i.e. its own transaction, since
+    lib.db.connect() already runs autocommit=True — which satisfies the
+    "separate transactions" requirement of the two-sample protocol without
+    needing an explicit pg_stat_clear_snapshot() call.
+    """
+    pgss = sql.Identifier(schema, "pg_stat_statements")
+    info = sql.Identifier(schema, "pg_stat_statements_info")
+    with conn.cursor() as cur:
+        cur.execute(sql.SQL(_SNAPSHOT_SQL).format(pgss=pgss))
+        rows = {}
+        for (queryid, query, calls, total_exec_time, row_count, mean_exec_time,
+             stddev_exec_time, shared_blks_read, temp_blks_read,
+             temp_blks_written) in cur.fetchall():
+            rows[queryid] = {
+                "query": query, "calls": calls, "total_exec_time": total_exec_time,
+                "rows": row_count, "mean_exec_time": mean_exec_time,
+                "stddev_exec_time": stddev_exec_time,
+                "shared_blks_read": shared_blks_read,
+                "temp_blks_read": temp_blks_read,
+                "temp_blks_written": temp_blks_written,
+            }
+        cur.execute(sql.SQL(_INFO_SQL).format(info=info))
+        stats_reset = cur.fetchone()[0]
+        cur.execute("SELECT pg_postmaster_start_time()")
+        postmaster_start = cur.fetchone()[0]
+    return {"stats_reset": stats_reset, "postmaster_start": postmaster_start, "rows": rows}
 
 
 def sample_pg_stat_statements_window(conn, schema: str, window_seconds: int,
                                       *, sleep_fn=time.sleep) -> dict:
-    """Placeholder — implemented in Task 3."""
-    raise NotImplementedError
+    """Take two snapshots `window_seconds` apart and reduce them to windowed
+    deltas (spec §6 P1.1). `sleep_fn` is injectable so tests can run activity
+    mid-window instead of literally sleeping.
+    """
+    sample1_at = datetime.now(timezone.utc).isoformat()
+    snap1 = snapshot_pg_stat_statements(conn, schema)
+    sleep_fn(window_seconds)
+    sample2_at = datetime.now(timezone.utc).isoformat()
+    snap2 = snapshot_pg_stat_statements(conn, schema)
+    result = compute_deltas(snap1, snap2)
+    return {
+        "window_seconds": window_seconds,
+        "sample1_at": sample1_at,
+        "sample2_at": sample2_at,
+        "reset_detected": result["reset_detected"],
+        "deltas": result["deltas"],
+    }

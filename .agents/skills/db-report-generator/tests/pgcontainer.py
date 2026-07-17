@@ -49,7 +49,8 @@ class PostgresContainer:
             subprocess.run(
                 ["docker", "run", "-d", "--rm", "--name", self.name,
                  "-e", "POSTGRES_PASSWORD=postgres",
-                 "-p", f"{self.port}:5432", self.image],
+                 "-p", f"{self.port}:5432", self.image,
+                 "-c", "shared_preload_libraries=pg_stat_statements"],
                 check=True, capture_output=True,
             )
             self._wait_ready()
