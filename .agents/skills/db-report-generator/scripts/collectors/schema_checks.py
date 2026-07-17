@@ -36,7 +36,7 @@ ORDER BY n.nspname, c.relname
 # malformed regclass literal and either error out or resolve to the wrong
 # relation. This module's own _sample_uuid_v4_ratio() below already avoids
 # that by building its FROM-clause identifier via psycopg2.sql.Identifier;
-# index_advisor.py's _qualified_ident() uses quote_ident() for the same
+# index_catalog.qualified_ident() uses quote_ident() for the same
 # reason. Binding the OID directly -- the same pattern
 # scripts/lib/index_catalog.py already uses for its own per-table
 # follow-up queries -- sidesteps identifier quoting entirely rather than

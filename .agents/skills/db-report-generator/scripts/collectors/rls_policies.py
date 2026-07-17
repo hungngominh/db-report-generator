@@ -66,18 +66,34 @@ def _fetch_policies(conn):
     test_collect_flags_unwrapped_auth_uid_even_when_search_path_hides_schema
     for a live reproduction.
 
-    Restoring splices current_setting()'s echoed text directly into `SET
-    search_path TO <text>` rather than binding it as a %s parameter --
-    verified live that binding it as a string parameter is wrong: search_path
-    is a GUC_LIST_INPUT variable, and the comma-list is only split when the
-    value appears as a bare identifier list in the SQL text itself. A
-    single quoted-string parameter is instead stored as ONE literal schema
-    name (confirmed live: it left search_path set to a single bogus schema
-    literally named "auth, public"). The spliced text is never
-    attacker-controlled -- it is the server's own canonical GUC state
-    reflected back via current_setting(), which is guaranteed to already
-    be valid `SET ... TO` syntax (including the special "$user" token and
-    quoted names containing commas/spaces)."""
+    Restoring uses `SELECT set_config('search_path', %s, false)` with
+    original_search_path bound as an ordinary %s parameter -- confirmed
+    live (see test_rls_policies.py) that this is NOT the same hazard as
+    binding a %s parameter into `SET search_path TO %s` (the statement
+    grammar): that form treats the bound value as a single quoted string
+    literal for the value slot and does NOT split it on commas, so a
+    readback of "auth, public" round-trips into one bogus schema literally
+    named "auth, public" (confirmed live: `SHOW search_path` afterward
+    reads `"auth, public"`, and unqualified names stop resolving).
+    set_config() is a regular function call taking a text argument, and
+    Postgres re-parses that argument through the normal GUC_LIST_INPUT
+    list-splitting logic for search_path regardless of how the text
+    argument was supplied -- confirmed live that
+    `set_config('search_path', 'auth, public', false)` bound as a %s
+    parameter leaves `SHOW search_path` reading `auth, public` (two
+    schemas) and both schemas resolve unqualified names correctly via
+    to_regclass(). set_config() was also confirmed live to tolerate an
+    empty string (`set_config('search_path', '', false)`) without raising,
+    leaving the connection usable afterward -- unlike the old splice
+    approach, which would have built the syntactically invalid `SET
+    search_path TO ` and raised inside this `finally` block, permanently
+    wedging the connection's search_path at `pg_catalog` for every
+    collector that runs afterward on the same shared connection. Using
+    set_config() as a bound parameter is therefore both injection-safe
+    (no string splicing at all) and correct for the empty/multi-schema
+    cases the old splice could not handle. See
+    test_rls_policies.py::test_collect_leaves_connection_usable_after_empty_search_path
+    for a live reproduction."""
     with conn.cursor() as cur:
         cur.execute("SELECT current_setting('search_path')")
         original_search_path = cur.fetchone()[0]
@@ -86,7 +102,7 @@ def _fetch_policies(conn):
             cur.execute(_POLICIES_SQL)
             return cur.fetchall()
         finally:
-            cur.execute("SET search_path TO " + original_search_path)
+            cur.execute("SELECT set_config('search_path', %s, false)", (original_search_path,))
 
 
 def _predicate_rows(conn, schema, table, policy, clause_name, expr_text):

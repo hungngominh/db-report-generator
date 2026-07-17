@@ -5,6 +5,7 @@ pg_index.indkey is an int2vector, not a genuine array type, so unnest()
 does not apply to it directly (unlike pg_constraint.conkey, a real int[],
 used by fk_missing_index.py).
 """
+from psycopg2.extensions import quote_ident
 
 _INDEXES_SQL = """
 SELECT i.indrelid, i.indnkeyatts, i.indkey::text AS indkey
@@ -46,6 +47,17 @@ def existing_indexed_columns(conn, schema: str, table: str) -> list:
     for attnums in parsed:
         results.append(tuple(names_by_attnum.get(a) if a != 0 else None for a in attnums))
     return results
+
+
+def qualified_ident(conn, schema, table):
+    """Builds a properly-quoted, optionally schema-qualified identifier for
+    (schema, table) via quote_ident() on `conn` -- shared by explain.py and
+    index_advisor.py, which both need to feed catalog-derived table names
+    back into SQL text safely."""
+    ident = quote_ident(table, conn)
+    if schema:
+        ident = f"{quote_ident(schema, conn)}.{ident}"
+    return ident
 
 
 def is_covered(existing: list, columns: list) -> bool:

@@ -15,10 +15,8 @@ parser-based allowlist plus the tightened statement_timeout/lock_timeout
 this module sets before every EXPLAIN and always restores afterward (even
 on failure).
 """
-from psycopg2.extensions import quote_ident
-
 from scripts.collectors import base
-from scripts.lib import db, sql_classify
+from scripts.lib import db, index_catalog, sql_classify
 
 _GENERIC_PLAN_MIN_VERSION = 160000
 
@@ -58,18 +56,11 @@ def _current_context(conn):
     return {"role": role, "search_path": search_path, "database": database}
 
 
-def _qualified_ident(conn, schema, table):
-    ident = quote_ident(table, conn)
-    if schema:
-        ident = f"{quote_ident(schema, conn)}.{ident}"
-    return ident
-
-
 def _references_foreign_table(conn, stmt):
     relations = sql_classify.referenced_relations(stmt)
     if not relations:
         return False
-    idents = [_qualified_ident(conn, schema, table) for schema, table in relations]
+    idents = [index_catalog.qualified_ident(conn, schema, table) for schema, table in relations]
     with conn.cursor() as cur:
         cur.execute(_FOREIGN_TABLE_SQL, (idents,))
         return cur.fetchone() is not None

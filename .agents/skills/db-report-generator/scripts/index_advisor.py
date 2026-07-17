@@ -7,8 +7,6 @@ rather than guessed at. Each referenced relation is resolved to its
 canonical (schema, table) via to_regclass() against the live connection
 (see _RESOLVE_RELATIONS_SQL below) so unqualified names follow the
 connection's actual search_path instead of being guessed at."""
-from psycopg2.extensions import quote_ident
-
 from scripts.collectors import base
 from scripts.lib import index_catalog, index_predicate, sql_classify
 
@@ -44,13 +42,6 @@ def _suggest(schema, table, columns):
     return {"schema": schema, "table": table, "suggested_columns": columns, "suggested_ddl": ddl}
 
 
-def _qualified_ident(conn, schema, table):
-    ident = quote_ident(table, conn)
-    if schema:
-        ident = f"{quote_ident(schema, conn)}.{ident}"
-    return ident
-
-
 def _resolve_single_table(conn, relations):
     """Resolves every (schema, table) reference in `relations` to its
     canonical (nspname, relname) via to_regclass() on `conn`, and returns
@@ -61,7 +52,7 @@ def _resolve_single_table(conn, relations):
     guess a schema."""
     if not relations:
         return None
-    idents = [_qualified_ident(conn, schema, table) for schema, table in relations]
+    idents = [index_catalog.qualified_ident(conn, schema, table) for schema, table in relations]
     with conn.cursor() as cur:
         cur.execute(_RESOLVE_RELATIONS_SQL, (idents,))
         resolved_rows = cur.fetchall()

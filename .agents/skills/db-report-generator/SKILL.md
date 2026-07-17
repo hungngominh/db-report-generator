@@ -91,6 +91,14 @@ File `.env` trong mỗi thư mục dự án chứa JSON với cấu trúc:
 | `ProjectName` | ❌ | Tên thư mục | Tên hiển thị của dự án |
 | `CodeLanguage` | ❌ | auto-detect | Ngôn ngữ chính: `csharp`, `java`, `python`, `typescript`, `go`, `php` |
 | `Framework` | ❌ | auto-detect | Framework: `dotnet`, `spring`, `django`, `nestjs`, `gin`, `laravel` |
+| `SamplingWindowSeconds` | ❌ | `30` | Độ dài (giây) của cửa sổ live sampling dùng để đo delta pg_stat_statements giữa 2 lần snapshot |
+| `ExplainMode` | ❌ | `"plan"` | Chế độ EXPLAIN cho top slow queries: `off` (tắt hẳn), `plan` (chỉ lập kế hoạch, không chạy query), `analyze` (**THỰC SỰ CHẠY query** trên DB live, không chỉ lập kế hoạch). Chế độ `analyze` chỉ được coi là an toàn khi CẢ BA cơ chế sau cùng có hiệu lực: (a) phân loại câu lệnh bằng parser thật `sql_classify.is_analyze_safe()` (không bao giờ dùng regex), (b) allowlist tường minh — chỉ `ExplainAnalyzeTopN` câu truy vấn chậm đầu tiên được phép, (c) `ExplainStatementTimeoutMs`/`ExplainLockTimeoutMs` siết chặt. Transaction READ ONLY KHÔNG được xem là cơ chế an toàn — ANALYZE vẫn thực thi các side-effect như `nextval()` ngay cả trong transaction READ ONLY |
+| `ExplainTopN` | ❌ | `5` | Số lượng slow queries (theo thứ hạng `query_stats`) sẽ được EXPLAIN (chế độ `plan` hoặc `analyze`) |
+| `ExplainAnalyzeTopN` | ❌ | `0` | Trong số `ExplainTopN` câu, chỉ `ExplainAnalyzeTopN` câu đầu tiên được phép chạy EXPLAIN ANALYZE thật (chỉ áp dụng khi `ExplainMode=analyze`); phần còn lại vẫn chỉ EXPLAIN plan |
+| `ExplainStatementTimeoutMs` | ❌ | `3000` | `statement_timeout` (ms) áp cho mỗi lệnh EXPLAIN/EXPLAIN ANALYZE, khôi phục lại giá trị mặc định ngay sau đó |
+| `ExplainLockTimeoutMs` | ❌ | `500` | `lock_timeout` (ms) áp cho mỗi lệnh EXPLAIN/EXPLAIN ANALYZE, khôi phục lại giá trị mặc định ngay sau đó |
+
+**Ghi chú:** EXPLAIN plan (và gợi ý từ index advisor) được đính kèm vào diagnostic block `explain` và `index_advisor` trong `report_data.json` — JSON plan nằm lồng bên trong các dòng `metrics` của từng block, KHÔNG có file "explain report" riêng ở cấp cao nhất.
 
 ## Quy Trình Thực Hiện
 
@@ -852,6 +860,7 @@ e:\Skills/
 ## Yêu Cầu Hệ Thống
 
 - Python 3.x với `psycopg2` (hoặc `psycopg2-binary`)
+- `pglast` (parser SQL thật theo grammar PostgreSQL, dùng để phân loại an toàn câu lệnh trước khi EXPLAIN ANALYZE và quét policy RLS — không dựa vào regex)
 - Quyền `SELECT` trên các system views (`pg_stat_*`, `pg_statio_*`)
 - Quyền `EXECUTE` trên `pg_database_size()`, `pg_relation_size()`
 - Nếu cần slow queries: extension `pg_stat_statements` phải được cài

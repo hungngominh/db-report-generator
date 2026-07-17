@@ -104,6 +104,45 @@ def test_collect_does_not_flag_auth_uid_nested_in_case_inside_subselect(pg_dsn):
 
 
 @pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_collect_leaves_connection_usable_after_empty_search_path(pg_dsn):
+    """Regression: if current_setting('search_path') is the empty string
+    (a pathological but possible session default), _fetch_policies must
+    still be able to restore it without raising -- the old `SET
+    search_path TO <spliced text>` approach built the syntactically
+    invalid `SET search_path TO ` for this case, which raised inside the
+    `finally` block and permanently wedged the connection's search_path at
+    pg_catalog for every collector run afterward on the same connection.
+    The set_config()-based restore must tolerate this and leave the
+    connection fully usable.
+
+    Note: plain `SET search_path = ''` does NOT reproduce this precondition
+    -- confirmed live that Postgres normalizes that statement's readback to
+    the literal two-character string '""' (an explicit empty-identifier
+    entry), not a true zero-length string. A genuinely empty
+    current_setting('search_path') readback is instead produced by
+    `set_config('search_path', '', false)` directly, which is what this
+    test sets up."""
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("SELECT set_config('search_path', '', false)")
+        cur.execute("SELECT current_setting('search_path')")
+        assert cur.fetchone()[0] == ""  # sanity: precondition actually holds
+
+    diag = collect(conn, {})
+    assert diag["status"] == "ok"
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT current_setting('search_path')")
+        # search_path was correctly restored to empty, not left wedged at
+        # pg_catalog (the old splice approach's failure mode) nor raising.
+        assert cur.fetchone()[0] == ""
+        cur.execute("SELECT 1")
+        assert cur.fetchone()[0] == 1
+    conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
 def test_collect_flags_unwrapped_auth_uid_even_when_search_path_hides_schema(pg_dsn):
     """Regression for a live-verified bug: pg_get_expr() (which
     pg_policies.qual/with_check text comes from) schema-qualifies a
