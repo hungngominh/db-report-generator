@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "finding_id": "maintenance.dead_tuples_pct",
+    "title": "Tỷ lệ dead tuple cao",
+    "severity": "warning",
+    "kind": "threshold",
+    "block": "dead_tuples",
+    "metric_key": "dead_pct",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 20, "yellow": 5},
+    "row_identity_fields": ["schema", "table"],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "maintenance.stale_stats_pct",
+    "title": "Thống kê bảng đã cũ (cần ANALYZE)",
+    "severity": "notice",
+    "kind": "threshold",
+    "block": "stale_stats",
+    "metric_key": "modified_pct",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 50, "yellow": 20},
+    "row_identity_fields": ["schema", "table"],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "maintenance.index_bloat_pct",
+    "title": "Index/table có dấu hiệu bloat",
+    "severity": "notice",
+    "kind": "threshold",
+    "block": "index_bloat",
+    "metric_key": "dead_tuple_percent",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 30, "yellow": 10},
+    "row_identity_fields": ["schema", "table"],
+    "confidence": "estimated"
+  },
+  {
+    "finding_id": "maintenance.duplicate_index",
+    "title": "Index trùng lặp hoặc dư thừa",
+    "severity": "notice",
+    "kind": "presence",
+    "block": "duplicate_index",
+    "assessment": "yellow",
+    "row_identity_fields": ["kind", "schema", "table", "keep", "redundant"],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "maintenance.fk_missing_index",
+    "title": "Khóa ngoại thiếu index hỗ trợ",
+    "severity": "warning",
+    "kind": "presence",
+    "block": "fk_missing_index",
+    "assessment": "red",
+    "row_identity_fields": ["schema", "table", "constraint"],
+    "confidence": "measured"
+  }
+]
