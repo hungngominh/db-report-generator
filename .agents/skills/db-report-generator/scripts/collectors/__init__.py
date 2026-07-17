@@ -40,6 +40,10 @@ from scripts.collectors import wait_events
 
 COLLECTORS["wait_events"] = wait_events.collect
 
+from scripts.collectors import checkpoint_activity
+
+COLLECTORS["checkpoint_activity"] = checkpoint_activity.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
