@@ -89,7 +89,10 @@ def _analyze_target(cfg: DbConfig) -> dict:
                     sampling_result = None
             target["diagnostics"] = collectors.run_collectors(
                 conn, target["capabilities"], sampling=sampling_result)
-            rules.evaluate_target(target)
+            try:
+                rules.evaluate_target(target)
+            except Exception:  # noqa: BLE001 - isolate rule-evaluation failure from collection status
+                pass
             target["collection_status"] = _collection_status(target["diagnostics"])
         finally:
             conn.close()

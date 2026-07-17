@@ -239,6 +239,39 @@ def test_analyze_target_wires_rule_engine_into_diagnostics(monkeypatch):
     assert findings[0]["assessment"] == "red"
 
 
+def test_rule_evaluation_failure_does_not_wipe_out_diagnostics(monkeypatch):
+    from scripts import analyzer
+
+    class FakeConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analyzer.db, "connect", lambda cfg: FakeConn())
+    monkeypatch.setattr(analyzer.capabilities, "probe", lambda conn: {"extensions": {}})
+    fake_diagnostics = {
+        "database_stats": {
+            "collector_version": "1", "scope": "database", "status": "ok", "reason": None,
+            "quality": {"sampling_valid": True, "reset_detected": False,
+                        "insufficient_activity": False, "truncated": False},
+            "metrics": [{"cache_hit_ratio": 0.5}], "findings": [],
+        },
+    }
+    monkeypatch.setattr(analyzer.collectors, "run_collectors", lambda conn, caps, sampling=None: fake_diagnostics)
+
+    def boom(target):
+        raise RuntimeError("simulated rule-evaluation failure")
+
+    monkeypatch.setattr(analyzer.rules, "evaluate_target", boom)
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p")
+
+    target = analyzer._analyze_target(cfg)
+
+    assert target["collection_status"] != "error"
+    assert target["error"] is None
+    assert target["diagnostics"]
+    assert target["diagnostics"]["database_stats"]["metrics"] == [{"cache_hit_ratio": 0.5}]
+
+
 def test_analyze_raises_on_b3_violation(monkeypatch):
     from scripts import analyzer
 
