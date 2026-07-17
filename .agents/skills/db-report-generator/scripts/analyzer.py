@@ -70,6 +70,7 @@ def _analyze_target(cfg: DbConfig) -> dict:
         conn = db.connect(cfg)
         try:
             target["capabilities"] = capabilities.probe(conn)
+            target["capabilities"]["configured_pool_size"] = cfg.raw.get("PoolSize")
             pgss = target["capabilities"].get("extensions", {}).get("pg_stat_statements")
             sampling_result = None
             if pgss:
