@@ -1,6 +1,9 @@
 """Orchestrate per-target collection into a schema-valid report_data.json."""
+import concurrent.futures
 import re
+import time
 import uuid
+import warnings
 from datetime import datetime, timezone
 
 from scripts import capabilities, collectors, sampler
@@ -8,6 +11,23 @@ from scripts.lib import db, schema
 from scripts.lib.envparse import DbConfig
 
 TOOL_VERSION = "4.0.0"
+
+_MAX_WORKERS = 8
+_LATENCY_WARNING_RATIO = 0.8  # elapsed > 80% of the fully-serial sum -> parallelism isn't bounding runtime
+
+
+def _check_latency_budget(targets: list, elapsed_seconds: float) -> None:
+    """Spec §0.B4: warn if multi-target sampling isn't actually bounded —
+    i.e. total elapsed time is suspiciously close to what a fully serial
+    N x window_seconds run would take.
+    """
+    total_window = sum((t.get("sampling") or {}).get("window_seconds", 0) for t in targets)
+    if len(targets) > 1 and total_window > 0 and elapsed_seconds > total_window * _LATENCY_WARNING_RATIO:
+        warnings.warn(
+            f"multi-target sampling took {elapsed_seconds:.1f}s for {len(targets)} targets "
+            f"(sum of window_seconds={total_window}s) — runtime is not bounded, check concurrency",
+            RuntimeWarning,
+        )
 
 # libpq embeds the RESOLVED address in connection errors, e.g.
 #   connection to server at "db.prod.internal" (10.20.30.40), port 5432 failed
@@ -74,7 +94,14 @@ def _analyze_target(cfg: DbConfig) -> dict:
 
 def analyze(configs, *, redaction_mode: str = "redact") -> dict:
     started = _now()
-    targets = [_analyze_target(cfg) for cfg in configs]
+    t0 = time.monotonic()
+    if len(configs) <= 1:
+        targets = [_analyze_target(cfg) for cfg in configs]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(_MAX_WORKERS, len(configs))) as pool:
+            targets = list(pool.map(_analyze_target, configs))
+    _check_latency_budget(targets, time.monotonic() - t0)
     report = {
         "schema_version": "4.0",
         "tool_version": TOOL_VERSION,

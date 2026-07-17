@@ -1,5 +1,7 @@
 import pytest
 
+import warnings
+
 import dataclasses
 
 import psycopg2
@@ -111,3 +113,59 @@ def test_analyze_populates_sampling_metadata_when_pg_stat_statements_present(pg_
     assert target["sampling"]["window_seconds"] == 0
     assert target["sampling"]["reset_detected"] is False
     assert target["diagnostics"]["query_stats"]["status"] == "ok"
+
+
+from scripts.analyzer import _check_latency_budget
+
+
+def _sampled_target(window_seconds):
+    return {"sampling": {"window_seconds": window_seconds}}
+
+
+def test_latency_budget_warns_when_elapsed_close_to_serial_sum():
+    targets = [_sampled_target(30), _sampled_target(30), _sampled_target(30)]  # sum = 90s
+    with pytest.warns(RuntimeWarning, match="not bounded"):
+        _check_latency_budget(targets, elapsed_seconds=85.0)
+
+
+def test_latency_budget_silent_when_elapsed_reflects_bounded_parallelism():
+    targets = [_sampled_target(30), _sampled_target(30), _sampled_target(30)]  # sum = 90s
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _check_latency_budget(targets, elapsed_seconds=32.0)  # ran in ~1 window, not 3 -> no raise
+
+
+def test_latency_budget_silent_for_a_single_target():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _check_latency_budget([_sampled_target(30)], elapsed_seconds=30.0)
+
+
+def test_latency_budget_silent_when_no_sampling_was_performed():
+    targets = [{"sampling": None}, {"sampling": None}]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _check_latency_budget(targets, elapsed_seconds=100.0)
+
+
+def test_analyze_runs_multiple_targets_concurrently(monkeypatch):
+    import time as time_module
+
+    from scripts import analyzer
+
+    def fake_analyze_target(cfg):
+        time_module.sleep(0.2)
+        return {"target_id": cfg.project_name, "database": cfg.database,
+                "collection_status": "ok", "error": None, "capabilities": {},
+                "diagnostics": {}, "sampling": None}
+
+    monkeypatch.setattr(analyzer, "_analyze_target", fake_analyze_target)
+    configs = [DbConfig(host="h", port=1, database=f"d{i}", user="u", password="p",
+                        project_name=f"p{i}") for i in range(4)]
+    t0 = time_module.monotonic()
+    report = analyzer.analyze(configs)
+    elapsed = time_module.monotonic() - t0
+    assert len(report["targets"]) == 4
+    assert {t["target_id"] for t in report["targets"]} == {"p0", "p1", "p2", "p3"}
+    # 4 targets x 0.2s would be 0.8s fully serial; bounded-parallel keeps it near 0.2s.
+    assert elapsed < 0.6
