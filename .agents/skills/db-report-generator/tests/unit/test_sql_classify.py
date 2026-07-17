@@ -104,3 +104,30 @@ def test_is_analyze_safe_false_for_select_into():
 def test_is_analyze_safe_true_for_plain_select_unaffected_by_select_into_check():
     stmt = sql_classify.parse_statement("select * from orders where id = 5")
     assert sql_classify.is_analyze_safe(stmt) == (True, None)
+
+
+def test_is_analyze_safe_false_for_select_into_nested_in_union():
+    stmt = sql_classify.parse_statement(
+        "select * into new_table from orders union select * from orders"
+    )
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "select_into"
+
+
+def test_is_analyze_safe_false_for_select_into_nested_in_intersect():
+    stmt = sql_classify.parse_statement(
+        "select * into new_table from orders intersect select * from orders"
+    )
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "select_into"
+
+
+def test_is_analyze_safe_false_for_select_into_nested_in_except():
+    stmt = sql_classify.parse_statement(
+        "select * into new_table from orders except select * from orders"
+    )
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "select_into"

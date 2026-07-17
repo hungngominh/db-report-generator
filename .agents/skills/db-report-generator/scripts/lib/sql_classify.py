@@ -125,6 +125,30 @@ class _LockingClauseFinder(visitors.Visitor):
             self.hit = True
 
 
+class _IntoClauseFinder(visitors.Visitor):
+    """Finds a non-empty intoClause on ANY SelectStmt in the tree, not just
+    the top-level statement -- a set-operation statement (UNION/INTERSECT/
+    EXCEPT) parses as a top-level SelectStmt with op != SETOP_NONE whose OWN
+    intoClause is always None; the legacy `SELECT ... INTO` target instead
+    lives on stmt.larg.intoClause (PostgreSQL only allows INTO on the first
+    arm of a set-op chain). A top-level-only check therefore sees None and
+    misses it, even though `EXPLAIN (ANALYZE) SELECT * INTO t FROM a UNION
+    SELECT * FROM b` really does create and populate `t` on real
+    PostgreSQL. Walking every SelectStmt (mirroring _LockingClauseFinder)
+    catches the larg/rarg case directly, and incidentally also covers INTO
+    nested inside a CTE or FROM-subquery -- both of which real PostgreSQL
+    already rejects at parse-analysis time before ANALYZE runs, but there's
+    no harm in the belt-and-suspenders coverage."""
+
+    def __init__(self):
+        super().__init__()
+        self.hit = False
+
+    def visit_SelectStmt(self, ancestors, node):
+        if node.intoClause:
+            self.hit = True
+
+
 def is_analyze_safe(stmt) -> tuple:
     """(True, None) when ANALYZE-mode EXPLAIN is safe to run against `stmt`;
     otherwise (False, reason). A read-only transaction is NOT relied on
@@ -133,10 +157,10 @@ def is_analyze_safe(stmt) -> tuple:
     allowlist. Foreign-table references are checked separately in
     explain.py via a catalog query (pg_foreign_table), not here.
 
-    Both the write-statement and locking-clause checks walk the ENTIRE
-    tree (not just the top-level node) because PostgreSQL supports
-    writable CTEs (`WITH d AS (DELETE FROM t ...) SELECT ...`), which
-    parse as a top-level SelectStmt with the DeleteStmt/UpdateStmt/
+    The write-statement, locking-clause, and INTO-clause checks all walk
+    the ENTIRE tree (not just the top-level node) because PostgreSQL
+    supports writable CTEs (`WITH d AS (DELETE FROM t ...) SELECT ...`),
+    which parse as a top-level SelectStmt with the DeleteStmt/UpdateStmt/
     InsertStmt/MergeStmt nested inside withClause.ctes[...].ctequery, and
     likewise supports a locking clause on a non-recursive CTE's own
     SelectStmt.
@@ -144,14 +168,24 @@ def is_analyze_safe(stmt) -> tuple:
     The legacy `SELECT ... INTO new_table FROM ...` syntax also parses as
     a plain SelectStmt (distinct from CREATE TABLE AS, which parses as a
     separate CreateTableAsStmt node already caught by not_a_select) but
-    populates stmt.intoClause and, under ANALYZE, actually creates and
+    populates intoClause and, under ANALYZE, actually creates and
     populates the target table -- a real side effect -- so it must be
-    rejected explicitly here rather than falling through as a read."""
+    rejected explicitly here rather than falling through as a read. This
+    must be a tree-wide check, not a top-level-only `stmt.intoClause`
+    check, because a set-operation statement (UNION/INTERSECT/EXCEPT)
+    parses as a top-level SelectStmt whose OWN intoClause is always None
+    -- the INTO target instead lives on stmt.larg.intoClause (the first
+    arm of the set-op chain, the only place PostgreSQL allows INTO on a
+    set operation). A top-level-only check misses this entirely even
+    though it is a live, confirmed side effect on real PostgreSQL: see
+    _IntoClauseFinder's docstring for detail."""
     if stmt is None:
         return False, "unparseable"
     if not isinstance(stmt, ast.SelectStmt):
         return False, "not_a_select"
-    if stmt.intoClause:
+    into_finder = _IntoClauseFinder()
+    into_finder(stmt)
+    if into_finder.hit:
         return False, "select_into"
     write_finder = _WriteStmtFinder()
     write_finder(stmt)
