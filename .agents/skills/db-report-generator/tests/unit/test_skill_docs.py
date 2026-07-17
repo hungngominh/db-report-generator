@@ -20,3 +20,17 @@ def test_combined_report_template_has_axis_matrix_placeholders(skill_dir):
     text = (skill_dir / "references" / "template-combined-report.md").read_text(encoding="utf-8")
     for axis_key in ("db_health", "query_performance", "maintenance", "connections", "security_rls"):
         assert f"{{{{{axis_key}_icon}}}}" in text, f"missing {axis_key}_icon placeholder"
+
+
+def test_skill_md_has_code_analysis_confidence_section(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "5.8 Gán Độ Tin Cậy Cho Code Findings" in text
+    for tier in ("measured", "estimated", "heuristic"):
+        assert f"`{tier}`" in text
+    assert "Không tìm thấy raw SQL" in text
+
+
+def test_skill_md_security_rls_axis_references_rls_policies_collector(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "`rls_policies`" in text
+    assert "rỗng — chưa có collector" not in text

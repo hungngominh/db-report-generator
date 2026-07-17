@@ -613,6 +613,20 @@ Grep patterns:
 - Tìm tiềm năng connection leak (open without close/dispose)
 ```
 
+#### 5.8 Gán Độ Tin Cậy Cho Code Findings
+
+Mỗi finding từ Bước 5.3-5.7 (raw SQL, SQL injection, N+1, mapping, connection management) phải được gán một trong 3 mức độ tin cậy — code-analysis ở đây là agent tự grep/đọc code (§3 kiến trúc: đây là trách nhiệm của agent, không phải collector Python), nên độ tin cậy phản ánh agent tự tin đến đâu vào từng phát hiện, không phải một con số đo được từ DB:
+
+| Mức | Khi nào dùng | Ví dụ |
+|-----|-------------|-------|
+| `measured` | Pattern match trực tiếp, không cần suy luận thêm — chuỗi text rõ ràng xuất hiện trong code | String-concatenated SQL (`"SELECT * FROM " + table`), `SELECT *` literal trong query text |
+| `estimated` | Pattern match nhưng cần agent tự xác nhận ngữ cảnh (vd. loop có thực sự gọi DB mỗi vòng không) | N+1 pattern (loop chứa call trông giống DB call), thiếu index cho cột dùng trong WHERE của raw SQL |
+| `heuristic` | Suy luận gián tiếp, không có bằng chứng trực tiếp trong code — dựa trên convention/thiếu vắng | "Có thể" thiếu connection pooling vì không tìm thấy config rõ ràng, "Có thể" thiếu pagination vì không thấy LIMIT/OFFSET |
+
+**Ưu tiên báo cáo:** liệt kê finding theo thứ tự `measured` → `estimated` → `heuristic` trong CODE_ANALYSIS_REPORT.md — tín hiệu độ tin cậy cao (SQL injection do string concatenation, `SELECT *`, connection leak pattern rõ ràng) phải đứng trước các suy đoán (N+1 chưa xác nhận, thiếu pagination suy luận từ absence).
+
+**Khi không tìm thấy gì:** nếu Bước 5.3 không tìm thấy raw SQL nào do code dùng ORM/ORM-generated SQL hoàn toàn, CODE_ANALYSIS_REPORT.md phải ghi rõ câu "Không tìm thấy raw SQL — code sử dụng ORM, không có ORM-generated SQL nào được kiểm tra thủ công" thay vì bỏ trống section — im lặng không phân biệt được với "chưa chạy bước này".
+
 ### Bước 6: Tạo Báo Cáo Tổng Hợp (COMBINED_REPORT.md)
 
 Sử dụng template từ `references/template-combined-report.md`.
@@ -624,10 +638,10 @@ Từ P3 trở đi, hệ thống KHÔNG dùng điểm số tổng hợp 0-100 (do
 | Trục | Nguồn rule | Diagnostic blocks liên quan |
 |------|-----------|------------------------------|
 | DB Health | `references/rules/db-health.json` | `database_stats`, `wraparound` |
-| Query Performance | `references/rules/query-performance.json` | `query_stats`, `index_io` |
-| Maintenance | `references/rules/maintenance.json` | `dead_tuples`, `stale_stats`, `index_bloat`, `duplicate_index`, `fk_missing_index` |
+| Query Performance | `references/rules/query-performance.json` | `query_stats`, `index_io`, `index_advisor` |
+| Maintenance | `references/rules/maintenance.json` | `dead_tuples`, `stale_stats`, `index_bloat`, `duplicate_index`, `fk_missing_index`, `schema_checks` |
 | Connections | `references/rules/connections.json` | `connection_depth`, `blocking` |
-| Security/RLS | `references/rules/security-rls.json` (rỗng — chưa có collector, xem P4.3) | — |
+| Security/RLS | `references/rules/security-rls.json` | `rls_policies` |
 
 Việc ánh xạ block → trục là tra cứu ở code (`scripts/rules.py`), không phải field trong schema — schema finding không có field `axis`.
 
