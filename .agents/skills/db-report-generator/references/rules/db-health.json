@@ -1,1 +1,40 @@
-[]
+[
+  {
+    "finding_id": "db_health.cache_hit_ratio",
+    "title": "Tỷ lệ cache hit thấp",
+    "severity": "warning",
+    "kind": "threshold",
+    "block": "database_stats",
+    "metric_key": "cache_hit_ratio",
+    "direction": "lower_is_worse",
+    "thresholds": {"red": 0.80, "yellow": 0.90},
+    "row_identity_fields": [],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "db_health.wraparound_xid_age",
+    "title": "XID age tiến gần ngưỡng autovacuum_freeze_max_age",
+    "severity": "critical",
+    "kind": "ratio_threshold",
+    "block": "wraparound",
+    "numerator_key": "xid_age",
+    "denominator_key": "autovacuum_freeze_max_age",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 1.0, "yellow": 0.8},
+    "row_identity_fields": ["level", "datname", "schema", "table"],
+    "confidence": "measured"
+  },
+  {
+    "finding_id": "db_health.wraparound_mxid_age",
+    "title": "MultiXact age tiến gần ngưỡng autovacuum_multixact_freeze_max_age",
+    "severity": "critical",
+    "kind": "ratio_threshold",
+    "block": "wraparound",
+    "numerator_key": "mxid_age",
+    "denominator_key": "autovacuum_multixact_freeze_max_age",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 1.0, "yellow": 0.8},
+    "row_identity_fields": ["level", "datname", "schema", "table"],
+    "confidence": "measured"
+  }
+]
