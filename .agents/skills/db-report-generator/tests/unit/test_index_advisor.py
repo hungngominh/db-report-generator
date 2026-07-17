@@ -93,6 +93,67 @@ def test_run_suggests_index_for_alias_qualified_predicate(pg_dsn):
 
 
 @pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_run_no_false_positive_for_unqualified_name_via_search_path(pg_dsn):
+    """Regression for the Critical bug found in code review: an earlier
+    version of index_advisor.py built its (schema, table) key by falling
+    back to a hardcoded "public" schema for any unqualified table
+    reference. Here search_path resolves the UNQUALIFIED `orders` in the
+    query text (exactly how pg_stat_statements stores query text under a
+    non-default search_path) into "advtest6", not "public" -- and
+    "public.orders" does not even exist. org_id is already indexed on
+    advtest6.orders, so the correct answer is no suggestion at all. The
+    old code would have missed the existing index on advtest6.orders
+    (looking for public.orders instead) and produced a false-positive
+    CREATE INDEX ON public.orders (...) suggestion."""
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    ddl = """
+    CREATE TABLE {s}.orders (id serial PRIMARY KEY, org_id int, status text);
+    CREATE INDEX ON {s}.orders (org_id);
+    """
+    try:
+        with _fixtures_sql.make_schema(conn, "advtest6", ddl):
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO advtest6, public")
+            rows = [{"queryid": "1", "query": "SELECT * FROM orders WHERE org_id = 5"}]
+            diag = index_advisor.run(conn, _query_stats_diag(rows), top_n=5)
+            assert diag["status"] == "ok"
+            assert diag["metrics"] == []
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public")
+        conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_run_suggests_correct_resolved_schema_for_unqualified_name_via_search_path(pg_dsn):
+    """Same non-public search_path/unqualified-query setup as above, but
+    with NO existing index -- proves that when a suggestion IS made, it
+    carries the correctly resolved schema ("advtest7"), not the hardcoded
+    "public" the old buggy code would have used."""
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    ddl = "CREATE TABLE {s}.orders (id serial PRIMARY KEY, org_id int, status text)"
+    try:
+        with _fixtures_sql.make_schema(conn, "advtest7", ddl):
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO advtest7, public")
+            rows = [{"queryid": "1", "query": "SELECT * FROM orders WHERE org_id = 5"}]
+            diag = index_advisor.run(conn, _query_stats_diag(rows), top_n=5)
+            assert diag["status"] == "ok"
+            assert len(diag["metrics"]) == 1
+            suggestion = diag["metrics"][0]
+            assert suggestion["schema"] == "advtest7"
+            assert suggestion["table"] == "orders"
+            assert suggestion["suggested_columns"] == ["org_id"]
+            assert "advtest7.orders" in suggestion["suggested_ddl"]
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public")
+        conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
 def test_run_dedups_identical_suggestions_across_queries(pg_dsn):
     # Two distinct slow queries (different queryid) that both boil down to
     # the same (schema, table, columns) suggestion must produce exactly one
