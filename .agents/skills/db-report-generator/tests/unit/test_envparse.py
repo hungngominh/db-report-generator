@@ -51,3 +51,27 @@ def test_sampling_window_seconds_defaults_to_30():
 def test_sampling_window_seconds_reads_custom_value():
     data = {**SAMPLE, "SamplingWindowSeconds": 45}
     assert parse_env(json.dumps(data)).sampling_window_seconds == 45
+
+
+def test_explain_fields_default_when_absent():
+    cfg = parse_env(json.dumps({
+        "ServerName": "h", "CatalogName": "d", "Username": "u", "Password": "p",
+    }))
+    assert cfg.explain_mode == "plan"
+    assert cfg.explain_top_n == 5
+    assert cfg.explain_analyze_top_n == 0
+    assert cfg.explain_statement_timeout_ms == 3000
+    assert cfg.explain_lock_timeout_ms == 500
+
+
+def test_explain_fields_parsed_when_present():
+    cfg = parse_env(json.dumps({
+        "ServerName": "h", "CatalogName": "d", "Username": "u", "Password": "p",
+        "ExplainMode": "analyze", "ExplainTopN": 3, "ExplainAnalyzeTopN": 2,
+        "ExplainStatementTimeoutMs": 1500, "ExplainLockTimeoutMs": 250,
+    }))
+    assert cfg.explain_mode == "analyze"
+    assert cfg.explain_top_n == 3
+    assert cfg.explain_analyze_top_n == 2
+    assert cfg.explain_statement_timeout_ms == 1500
+    assert cfg.explain_lock_timeout_ms == 250

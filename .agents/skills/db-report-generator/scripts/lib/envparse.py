@@ -16,6 +16,11 @@ class DbConfig:
     project_name: str = ""
     code_path: str = ""
     sampling_window_seconds: int = 30
+    explain_mode: str = "plan"
+    explain_top_n: int = 5
+    explain_analyze_top_n: int = 0
+    explain_statement_timeout_ms: int = 3000
+    explain_lock_timeout_ms: int = 500
     raw: dict = field(default_factory=dict)
 
 
@@ -37,5 +42,10 @@ def parse_env(source) -> DbConfig:
         project_name=str(data.get("ProjectName", "")),
         code_path=str(data.get("CodePath", "")),
         sampling_window_seconds=int(data.get("SamplingWindowSeconds", 30)),
+        explain_mode=str(data.get("ExplainMode", "plan")),
+        explain_top_n=int(data.get("ExplainTopN", 5)),
+        explain_analyze_top_n=int(data.get("ExplainAnalyzeTopN", 0)),
+        explain_statement_timeout_ms=int(data.get("ExplainStatementTimeoutMs", 3000)),
+        explain_lock_timeout_ms=int(data.get("ExplainLockTimeoutMs", 500)),
         raw=data,
     )
