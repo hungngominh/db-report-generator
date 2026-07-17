@@ -19,6 +19,7 @@ _SNAPSHOT_SQL = """
 SELECT queryid::text, query, calls, total_exec_time, rows, mean_exec_time,
        stddev_exec_time, shared_blks_read, temp_blks_read, temp_blks_written
 FROM {pgss}
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
 """
 _INFO_SQL = "SELECT stats_reset FROM {info}"
 

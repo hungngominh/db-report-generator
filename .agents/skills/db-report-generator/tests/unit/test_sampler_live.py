@@ -118,3 +118,37 @@ def test_qualifies_with_extension_schema_not_search_path(pg_dsn):
             snapshot_pg_stat_statements(conn, "no_such_schema")
     finally:
         conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_snapshot_is_scoped_to_current_database_not_cluster_wide(pg_dsn):
+    admin_conn = psycopg2.connect(**pg_dsn)
+    admin_conn.autocommit = True
+    other_db = "sampler_scope_test_db"
+    try:
+        with admin_conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+            cur.execute(f"DROP DATABASE IF EXISTS {other_db}")
+            cur.execute(f"CREATE DATABASE {other_db}")
+
+        other_dsn = {**pg_dsn, "dbname": other_db}
+        other_conn = psycopg2.connect(**other_dsn)
+        other_conn.autocommit = True
+        try:
+            with other_conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+                cur.execute("SELECT 424242123 /* other_db_marker */")
+        finally:
+            other_conn.close()
+
+        with admin_conn.cursor() as cur:
+            cur.execute("SELECT 777777444 /* this_db_marker */")
+
+        snap = snapshot_pg_stat_statements(admin_conn, SCHEMA)
+        queries = [r["query"] for r in snap["rows"].values()]
+        assert any("777777444" in q for q in queries)
+        assert not any("424242123" in q for q in queries)
+    finally:
+        with admin_conn.cursor() as cur:
+            cur.execute(f"DROP DATABASE IF EXISTS {other_db}")
+        admin_conn.close()
