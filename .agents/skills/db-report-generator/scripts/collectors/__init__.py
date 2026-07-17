@@ -24,6 +24,10 @@ from scripts.collectors import table_index_size
 
 COLLECTORS["table_index_size"] = table_index_size.collect
 
+from scripts.collectors import query_stats
+
+COLLECTORS["query_stats"] = query_stats.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
