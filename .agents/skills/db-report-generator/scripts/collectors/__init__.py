@@ -36,6 +36,10 @@ from scripts.collectors import database_stats
 
 COLLECTORS["database_stats"] = database_stats.collect
 
+from scripts.collectors import wait_events
+
+COLLECTORS["wait_events"] = wait_events.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
