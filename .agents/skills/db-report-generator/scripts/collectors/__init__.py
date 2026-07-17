@@ -25,18 +25,22 @@ from scripts.collectors import table_index_size
 COLLECTORS["table_index_size"] = table_index_size.collect
 
 
-def run_collectors(conn, caps, registry=None):
+def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
 
     A collector that raises is recorded as an ``error`` diagnostic (reason =
     the exception class name — never the message, to avoid leaking identifiers)
-    and does not abort the others.
+    and does not abort the others. ``sampling`` (the per-target windowed
+    pg_stat_statements deltas, or None) is merged into a *copy* of ``caps``
+    so the caller's own ``caps``/``target["capabilities"]`` dict is never
+    mutated and never carries the raw sampling payload.
     """
     reg = registry if registry is not None else COLLECTORS
+    merged_caps = {**caps, "sampling": sampling}
     out = {}
     for name, fn in reg.items():
         try:
-            out[name] = fn(conn, caps)
+            out[name] = fn(conn, merged_caps)
         except Exception as exc:  # noqa: BLE001 - isolate per-collector failure
             out[name] = base.diagnostic(
                 "table", "error", [], reason=type(exc).__name__)

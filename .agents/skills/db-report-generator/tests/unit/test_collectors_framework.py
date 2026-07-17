@@ -43,3 +43,35 @@ def test_collection_status_is_partial_when_any_diagnostic_errored():
     assert _collection_status({"a": ok}) == "ok"
     assert _collection_status({"a": ok, "b": err}) == "partial"
     assert _collection_status({}) == "ok"
+
+
+def test_run_collectors_merges_sampling_into_caps_for_every_collector():
+    seen = {}
+
+    def spy(conn, caps):
+        seen["sampling"] = caps.get("sampling")
+        return base.diagnostic("query", "ok", [])
+
+    run_collectors(conn=None, caps={"server_version_num": 1}, registry={"spy": spy},
+                    sampling={"window_seconds": 30, "deltas": []})
+    assert seen["sampling"] == {"window_seconds": 30, "deltas": []}
+
+
+def test_run_collectors_sampling_defaults_to_none():
+    seen = {}
+
+    def spy(conn, caps):
+        seen["sampling"] = caps.get("sampling")
+        return base.diagnostic("query", "ok", [])
+
+    run_collectors(conn=None, caps={}, registry={"spy": spy})
+    assert seen["sampling"] is None
+
+
+def test_run_collectors_does_not_mutate_the_caller_caps_dict():
+    # target["capabilities"] must never carry the raw sampling payload —
+    # only caps passed into each collector should see it.
+    caller_caps = {"server_version_num": 1}
+    run_collectors(conn=None, caps=caller_caps, registry={},
+                    sampling={"window_seconds": 30, "deltas": []})
+    assert "sampling" not in caller_caps
