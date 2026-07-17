@@ -10,6 +10,7 @@ _UNSAFE_FUNCTIONS = {
     "pg_advisory_xact_lock", "pg_advisory_xact_lock_shared",
     "pg_try_advisory_lock", "pg_try_advisory_lock_shared",
     "pg_try_advisory_xact_lock", "pg_try_advisory_xact_lock_shared",
+    "pg_advisory_unlock", "pg_advisory_unlock_shared", "pg_advisory_unlock_all",
     "pg_sleep", "txid_current", "random",
 }
 
@@ -73,10 +74,55 @@ class _UnsafeFunctionFinder(visitors.Visitor):
     def visit_FuncCall(self, ancestors, node):
         if self.hit:
             return
-        names = [n.sval for n in node.funcname]
+        names = [n.sval for n in node.funcname or ()]
+        if not names:
+            return
         name = names[-1]
         if name in _UNSAFE_FUNCTIONS:
             self.hit = name
+
+
+class _WriteStmtFinder(visitors.Visitor):
+    """Finds a DML write statement anywhere in the tree -- including nested
+    inside a writable CTE's ctequery (e.g. `WITH d AS (DELETE ...) SELECT
+    ...`), which parses as a top-level SelectStmt and would otherwise evade
+    an isinstance check on the outer statement alone."""
+
+    def __init__(self):
+        super().__init__()
+        self.hit = None
+
+    def visit_DeleteStmt(self, ancestors, node):
+        if self.hit is None:
+            self.hit = "DeleteStmt"
+
+    def visit_UpdateStmt(self, ancestors, node):
+        if self.hit is None:
+            self.hit = "UpdateStmt"
+
+    def visit_InsertStmt(self, ancestors, node):
+        if self.hit is None:
+            self.hit = "InsertStmt"
+
+    def visit_MergeStmt(self, ancestors, node):
+        if self.hit is None:
+            self.hit = "MergeStmt"
+
+
+class _LockingClauseFinder(visitors.Visitor):
+    """Finds a non-empty lockingClause on ANY SelectStmt in the tree, not
+    just the top-level statement -- PostgreSQL allows a locking clause
+    (e.g. FOR UPDATE) on a non-recursive CTE's own SelectStmt, which is
+    nested under withClause.ctes[...].ctequery rather than the outer
+    statement."""
+
+    def __init__(self):
+        super().__init__()
+        self.hit = False
+
+    def visit_SelectStmt(self, ancestors, node):
+        if node.lockingClause:
+            self.hit = True
 
 
 def is_analyze_safe(stmt) -> tuple:
@@ -85,12 +131,26 @@ def is_analyze_safe(stmt) -> tuple:
     here -- ANALYZE still executes the statement (e.g. nextval() runs even
     inside READ ONLY), so safety comes entirely from this parser-based
     allowlist. Foreign-table references are checked separately in
-    explain.py via a catalog query (pg_foreign_table), not here."""
+    explain.py via a catalog query (pg_foreign_table), not here.
+
+    Both the write-statement and locking-clause checks walk the ENTIRE
+    tree (not just the top-level node) because PostgreSQL supports
+    writable CTEs (`WITH d AS (DELETE FROM t ...) SELECT ...`), which
+    parse as a top-level SelectStmt with the DeleteStmt/UpdateStmt/
+    InsertStmt/MergeStmt nested inside withClause.ctes[...].ctequery, and
+    likewise supports a locking clause on a non-recursive CTE's own
+    SelectStmt."""
     if stmt is None:
         return False, "unparseable"
     if not isinstance(stmt, ast.SelectStmt):
         return False, "not_a_select"
-    if stmt.lockingClause:
+    write_finder = _WriteStmtFinder()
+    write_finder(stmt)
+    if write_finder.hit:
+        return False, f"write_statement:{write_finder.hit}"
+    locking_finder = _LockingClauseFinder()
+    locking_finder(stmt)
+    if locking_finder.hit:
         return False, "locking_clause"
     finder = _UnsafeFunctionFinder()
     finder(stmt)

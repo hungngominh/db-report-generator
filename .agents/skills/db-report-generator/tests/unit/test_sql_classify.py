@@ -74,3 +74,21 @@ def test_is_analyze_safe_false_for_unsafe_function():
 
 def test_is_analyze_safe_false_for_unparseable():
     assert sql_classify.is_analyze_safe(None) == (False, "unparseable")
+
+
+def test_is_analyze_safe_false_for_writable_cte():
+    stmt = sql_classify.parse_statement(
+        "WITH d AS (DELETE FROM orders WHERE id = 5) SELECT 1 FROM d"
+    )
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "write_statement:DeleteStmt"
+
+
+def test_is_analyze_safe_false_for_cte_nested_for_update():
+    stmt = sql_classify.parse_statement(
+        "WITH d AS (SELECT * FROM orders WHERE id = 5 FOR UPDATE) SELECT 1 FROM d"
+    )
+    safe, reason = sql_classify.is_analyze_safe(stmt)
+    assert safe is False
+    assert reason == "locking_clause"
