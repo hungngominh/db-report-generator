@@ -209,3 +209,59 @@ def test_analyze_wires_configured_pool_size_from_raw_env(pg_dsn):
     cfg.raw["PoolSize"] = 15
     report = analyze([cfg])
     assert report["targets"][0]["capabilities"]["configured_pool_size"] == 15
+
+
+def test_analyze_target_wires_rule_engine_into_diagnostics(monkeypatch):
+    from scripts import analyzer
+
+    class FakeConn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analyzer.db, "connect", lambda cfg: FakeConn())
+    monkeypatch.setattr(analyzer.capabilities, "probe", lambda conn: {"extensions": {}})
+    fake_diagnostics = {
+        "database_stats": {
+            "collector_version": "1", "scope": "database", "status": "ok", "reason": None,
+            "quality": {"sampling_valid": True, "reset_detected": False,
+                        "insufficient_activity": False, "truncated": False},
+            "metrics": [{"cache_hit_ratio": 0.5}], "findings": [],
+        },
+    }
+    monkeypatch.setattr(analyzer.collectors, "run_collectors", lambda conn, caps, sampling=None: fake_diagnostics)
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p")
+
+    target = analyzer._analyze_target(cfg)
+
+    findings = target["diagnostics"]["database_stats"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["finding_id"] == "db_health.cache_hit_ratio"
+    assert findings[0]["assessment"] == "red"
+
+
+def test_analyze_raises_on_b3_violation(monkeypatch):
+    from scripts import analyzer
+
+    def fake_analyze_target(cfg):
+        return {
+            "target_id": cfg.project_name, "database": cfg.database,
+            "collection_status": "ok", "error": None, "capabilities": {}, "sampling": None,
+            "diagnostics": {
+                "query_stats": {
+                    "collector_version": "1", "scope": "query", "status": "ok", "reason": None,
+                    "quality": {"sampling_valid": False, "reset_detected": True,
+                                "insufficient_activity": False, "truncated": False},
+                    "metrics": [],
+                    # deliberately violates B3: assessment/confidence not downgraded
+                    "findings": [{"finding_id": "bug", "severity": "warning", "assessment": "red",
+                                  "confidence": "measured", "title": "t",
+                                  "evidence_ids": [], "remediation_ids": []}],
+                },
+            },
+        }
+
+    monkeypatch.setattr(analyzer, "_analyze_target", fake_analyze_target)
+    cfg = DbConfig(host="h", port=1, database="d", user="u", password="p", project_name="p")
+
+    with pytest.raises(RuntimeError, match="B3"):
+        analyzer.analyze([cfg])

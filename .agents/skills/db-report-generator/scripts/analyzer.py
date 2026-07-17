@@ -6,8 +6,8 @@ import uuid
 import warnings
 from datetime import datetime, timezone
 
-from scripts import capabilities, collectors, sampler
-from scripts.lib import db, schema
+from scripts import capabilities, collectors, rules, sampler
+from scripts.lib import db, invariants, schema
 from scripts.lib.envparse import DbConfig
 
 TOOL_VERSION = "4.0.0"
@@ -89,6 +89,7 @@ def _analyze_target(cfg: DbConfig) -> dict:
                     sampling_result = None
             target["diagnostics"] = collectors.run_collectors(
                 conn, target["capabilities"], sampling=sampling_result)
+            rules.evaluate_target(target)
             target["collection_status"] = _collection_status(target["diagnostics"])
         finally:
             conn.close()
@@ -115,5 +116,8 @@ def analyze(configs, *, redaction_mode: str = "redact") -> dict:
         "redaction_mode": redaction_mode,
         "targets": targets,
     }
+    violations = invariants.check_confidence_invalidation(report)
+    if violations:
+        raise RuntimeError(f"B3 confidence-invalidation violated: {violations}")
     schema.validate_report(report)
     return report
