@@ -5,21 +5,24 @@
 
 ---
 
-## BẢNG ĐIỀU KHIỂN TỔNG QUAN
+## MA TRẬN TRỤC (AXIS MATRIX)
 
-| Hạng Mục | Điểm | Trạng Thái |
-|----------|------|------------|
-| **Sức Khỏe Database** | {{db_score}}/100 | {{db_status_icon}} |
-| **Chất Lượng Code (Lớp DB)** | {{code_score}}/100 | {{code_status_icon}} |
-| **Bảo Mật** | {{security_score}}/100 | {{security_status_icon}} |
-| **Hiệu Suất** | {{perf_score}}/100 | {{perf_status_icon}} |
-| **TỔNG** | **{{total_score}}/100** | **{{total_status_icon}}** |
+| Trục | Trạng thái | Độ tin cậy | Ghi chú |
+|------|-----------|-----------|---------|
+| DB Health | {{db_health_icon}} | {{db_health_confidence}} | {{db_health_note}} |
+| Query Performance | {{query_performance_icon}} | {{query_performance_confidence}} | {{query_performance_note}} |
+| Maintenance | {{maintenance_icon}} | {{maintenance_confidence}} | {{maintenance_note}} |
+| Connections | {{connections_icon}} | {{connections_confidence}} | {{connections_note}} |
+| Security/RLS | {{security_rls_icon}} | {{security_rls_confidence}} | {{security_rls_note}} |
 
-### Quy Ước Điểm
-- 🟢 90-100: Xuất sắc
-- 🟡 70-89: Tốt, có điểm cần cải thiện
-- 🟠 50-69: Cần chú ý
-- 🔴 0-49: Nghiêm trọng, cần xử lý ngay
+**Quy Ước Ký Hiệu:**
+- 🟢 green — không phát hiện vấn đề ở ngưỡng đã đo
+- 🟡 yellow — cảnh báo sớm, cần theo dõi
+- 🔴 red — vấn đề nghiêm trọng, cần xử lý
+- ⚪ unknown — dữ liệu không đủ tin cậy để đánh giá (không được nâng cấp lên green/yellow/red — spec §0.B3)
+- ➖ not_applicable — trục không áp dụng cho hệ thống này
+
+**Độ tin cậy:** `measured` (đo trực tiếp) > `estimated` (suy ra từ mẫu) > `heuristic` (suy đoán, độ tin cậy thấp nhất — luôn đi kèm `unknown` theo §0.B3).
 
 ---
 

@@ -617,14 +617,19 @@ Grep patterns:
 
 Sử dụng template từ `references/template-combined-report.md`.
 
-**Hệ thống chấm điểm:**
+### Mô hình đánh giá theo trục (Axis Model)
 
-| Hạng mục | Tiêu chí | Điểm |
-|----------|---------|------|
-| DB Health | Cache >95%: +30, Connections <60%: +20, No blocking: +20, Dead tuples <5%: +15, Size hợp lý: +15 | /100 |
-| Code Quality | No SQL injection: +30, No N+1: +25, Parameterized queries: +20, Proper connection mgmt: +15, Migration up-to-date: +10 | /100 |
-| Security | No hardcoded creds: +40, No SQL injection: +30, Proper auth: +30 | /100 |
-| Performance | Index coverage: +30, No slow queries >1s: +25, Cache hit >90%: +25, No SELECT *: +20 | /100 |
+Từ P3 trở đi, hệ thống KHÔNG dùng điểm số tổng hợp 0-100 (double-counting, false precision). Mỗi trục trong 5 trục sau được đánh giá độc lập bằng 🟢/🟡/🔴/⚪/➖ kèm độ tin cậy (`measured`/`estimated`/`heuristic`):
+
+| Trục | Nguồn rule | Diagnostic blocks liên quan |
+|------|-----------|------------------------------|
+| DB Health | `references/rules/db-health.json` | `database_stats`, `wraparound` |
+| Query Performance | `references/rules/query-performance.json` | `query_stats`, `index_io` |
+| Maintenance | `references/rules/maintenance.json` | `dead_tuples`, `stale_stats`, `index_bloat`, `duplicate_index`, `fk_missing_index` |
+| Connections | `references/rules/connections.json` | `connection_depth`, `blocking` |
+| Security/RLS | `references/rules/security-rls.json` (rỗng — chưa có collector, xem P4.3) | — |
+
+Việc ánh xạ block → trục là tra cứu ở code (`scripts/rules.py`), không phải field trong schema — schema finding không có field `axis`.
 
 ### Bước 7: So Sánh Với Báo Cáo Trước
 
@@ -634,7 +639,7 @@ Sử dụng template từ `references/template-combined-report.md`.
    - So sánh Avg Query Time
    - So sánh Database Size
    - So sánh số Blocking Queries
-   - So sánh Code Score (nếu có)
+   - So sánh số lượng finding theo severity giữa các lần chạy (không còn khái niệm "Code Score" tổng hợp)
    - Ghi nhận xu hướng: ⬆️ cải thiện | ⬇️ xấu đi | ➡️ không đổi
 
 ### Bước 8: Generate Performance Solutions (PERFORMANCE_SOLUTIONS.md)
@@ -773,10 +778,10 @@ Sau khi tạo xong báo cáo cho tất cả dự án, hiển thị tóm tắt:
 
 Tổng số dự án: N
 
-| # | Dự Án    | DB Status | Code Status | Score | P0 | P1 | P2 | Solutions |
-|---|----------|-----------|-------------|-------|----|----|----|-----------|
-| 1 | Project_A| 🟢 95%   | 🟡 78/100   | 85    | 0  | 2  | 5  | 7         |
-| 2 | Project_B| 🟡 82%   | 🔴 45/100   | 62    | 3  | 5  | 8  | 16        |
+| # | Dự Án    | Trục Xấu Nhất  | P0 | P1 | P2 | Solutions |
+|---|----------|----------------|----|----|----|-----------|
+| 1 | Project_A| 🟡 maintenance | 0  | 2  | 5  | 7         |
+| 2 | Project_B| 🔴 db-health   | 3  | 5  | 8  | 16        |
 
 Báo cáo đã được lưu tại:
 📁 PROJECT_A/yyyy-MM-dd/
