@@ -167,3 +167,40 @@ def test_presence_kind_dispatches_through_evaluate_diagnostic():
     findings = rules.evaluate_diagnostic("some_block", diag, {"some_block": [_PRESENCE_RULE]})
     assert len(findings) == 1
     assert findings[0]["finding_id"] == "test.presence:public:a"
+
+
+from scripts.collectors import COLLECTORS
+
+
+def test_every_rule_block_is_a_real_collector():
+    catalog = rules.load_catalog()
+    known_blocks = set(COLLECTORS)
+    for axis, axis_rules in catalog.items():
+        for rule in axis_rules:
+            assert rule["block"] in known_blocks, f"{axis}/{rule['finding_id']} references unknown block {rule['block']!r}"
+
+
+def test_security_rls_is_an_intentional_empty_placeholder():
+    # No P0-P2 collector inspects Row Level Security policies (that's P4.3).
+    # This axis is deliberately empty in P3, not a forgotten TODO.
+    catalog = rules.load_catalog()
+    assert catalog["security-rls"] == []
+
+
+def test_axes_match_spec_section_8_order():
+    assert rules.AXES == ("db-health", "query-performance", "maintenance",
+                          "connections", "security-rls")
+
+
+def test_every_rule_has_a_unique_finding_id_within_its_axis():
+    catalog = rules.load_catalog()
+    for axis, axis_rules in catalog.items():
+        ids = [r["finding_id"] for r in axis_rules]
+        assert len(ids) == len(set(ids)), f"duplicate finding_id within axis {axis!r}"
+
+
+def test_every_rule_kind_is_registered():
+    catalog = rules.load_catalog()
+    for axis_rules in catalog.values():
+        for rule in axis_rules:
+            assert rule["kind"] in rules._EVALUATORS
