@@ -80,6 +80,10 @@ from scripts.collectors import rls_policies
 
 COLLECTORS["rls_policies"] = rls_policies.collect
 
+from scripts.collectors import schema_checks
+
+COLLECTORS["schema_checks"] = schema_checks.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.

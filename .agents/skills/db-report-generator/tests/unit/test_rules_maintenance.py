@@ -69,3 +69,13 @@ def test_fk_missing_index_fires_red():
     assert len(findings) == 1
     assert findings[0]["assessment"] == "red"
     assert findings[0]["finding_id"] == "maintenance.fk_missing_index:public:orders:orders_user_id_fkey"
+
+
+def test_schema_hygiene_issue_fires_yellow_for_missing_pk():
+    diag = {"status": "ok", "quality": _quality(),
+            "metrics": [{"schema": "public", "table": "events", "issue": "missing_primary_key",
+                         "column": None, "row_estimate": 10.0}]}
+    findings = rules.evaluate_diagnostic("schema_checks", diag, _rules_by_block())
+    assert len(findings) == 1
+    assert findings[0]["assessment"] == "yellow"
+    assert findings[0]["finding_id"] == "maintenance.schema_hygiene_issue:public:events:missing_primary_key"

@@ -54,5 +54,15 @@
     "assessment": "red",
     "row_identity_fields": ["schema", "table", "constraint"],
     "confidence": "measured"
+  },
+  {
+    "finding_id": "maintenance.schema_hygiene_issue",
+    "title": "Vấn đề schema hygiene (thiếu PK, UUID PK trên bảng lớn, hoặc timestamp không có timezone)",
+    "severity": "notice",
+    "kind": "presence",
+    "block": "schema_checks",
+    "assessment": "yellow",
+    "row_identity_fields": ["schema", "table", "issue", "column"],
+    "confidence": "measured"
   }
 ]
