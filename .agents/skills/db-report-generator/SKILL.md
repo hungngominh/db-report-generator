@@ -701,16 +701,12 @@ Tổng hợp issues từ Bước 3-5:
 - SELECT * patterns
 - Connection management issues
 
-#### 8.3 Chạy Solution Queries
+#### 8.3 Tra Cứu Remediation Class
 
-Execute queries từ `references/queries-solutions.sql` để thu thập:
-- Missing FK indexes → auto-generate CREATE INDEX statements
-- Duplicate indexes → auto-generate DROP INDEX statements
-- Tables cần VACUUM → auto-generate VACUUM commands
-- Server config comparison → generate ALTER SYSTEM statements
-- Partition candidates (tables > 1M rows)
-- Index bloat → generate REINDEX statements
-- Idle connections → generate pg_terminate_backend statements
+Với mỗi vấn đề đã match được từ `references/kb/solution-index.md`, đọc trường `Remediation Class` của pattern đó (5-tier taxonomy — xem chi tiết tại `references/remediation-policy.md`):
+- `observe-only`, `controlled-diagnostic`, `maintenance-review`, `ddl-review` → có thể đưa fix vào script "SẴN SÀNG CHẠY" tương ứng theo priority (P0/P1/P2).
+- `dangerous` → KHÔNG đưa vào script "SẴN SÀNG CHẠY". Đưa vào mục riêng "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" của `PERFORMANCE_SOLUTIONS.md`.
+- Với fix liên quan `ALTER SYSTEM`, kiểm tra `report_data.json` → `capabilities.managed` và `capabilities.is_superuser` trước khi quyết định đưa vào (chi tiết ở `references/remediation-policy.md` mục 3).
 
 #### 8.4 Assign Priority
 
@@ -748,9 +744,10 @@ Với mỗi vấn đề, tạo SQL fix cụ thể:
 
 1. Lấy fix template từ `solution-index.md`
 2. Thay thế placeholders bằng actual table names, column names, schema names từ diagnostic data
-3. Thêm `CONCURRENTLY` cho tất cả CREATE/DROP INDEX (production safety)
+3. Thêm `CONCURRENTLY` cho tất cả CREATE/DROP INDEX, đặt trong SQL block RIÊNG tách biệt khỏi mọi transaction block khác; ghi kèm cảnh báo về index `INVALID` nếu câu lệnh thất bại giữa chừng (xem `references/remediation-policy.md` mục 4)
 4. Thêm verification query sau mỗi fix
-5. Thêm rollback statement nếu applicable
+5. Thêm `recovery_or_rollback` cho mỗi fix (xem `references/remediation-policy.md` mục 2 để biết quy ước theo từng loại fix)
+6. Nếu `Remediation Class` của fix là `dangerous`, KHÔNG đưa fix đó vào bất kỳ script "SẴN SÀNG CHẠY" nào — đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" thay thế
 
 #### 8.6 Generate Code-Side Solutions
 
@@ -879,11 +876,12 @@ Các query đầy đủ và giải thích chi tiết:
 - `references/queries-overview.sql` - Queries tổng quan database
 - `references/queries-performance.sql` - Queries phân tích hiệu suất
 - `references/queries-index.sql` - Queries phân tích index
-- `references/queries-solutions.sql` - Queries tạo fix SQL statements ⭐ NEW
+- `references/remediation-policy.md` - Chính sách an toàn 5-tier cho mọi remediation SQL ⭐ NEW
 
 ## Solution Engine
 
 Hệ thống tạo giải pháp dựa trên knowledge base đóng gói nội bộ tại `references/kb/` (nguồn: supabase-postgres-best-practices, xem `references/kb/_index.md`):
-- `references/kb/solution-index.md` - Master mapping: 19 problem patterns → concrete fixes
-- Mỗi fix bao gồm: SQL template, verification query, rollback, expected impact
+- `references/kb/solution-index.md` - Master mapping: 19 problem patterns → concrete fixes, mỗi pattern gắn `remediation_class`
+- Mỗi fix bao gồm: SQL template, verification query, `recovery_or_rollback`, expected impact
 - Priority rules: P0 (24h) → P1 (1 tuần) → P2 (1 tháng) → P3 (sprint sau)
+- An toàn: xem `references/remediation-policy.md` cho 5-tier taxonomy và quy tắc gating theo capability

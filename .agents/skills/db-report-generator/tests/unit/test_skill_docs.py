@@ -40,3 +40,24 @@ def test_skill_md_solution_engine_pattern_count_matches_solution_index(skill_dir
     text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
     assert "19 problem patterns" in text
     assert "13 problem patterns" not in text
+
+
+def test_skill_md_no_longer_references_queries_solutions_sql(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "queries-solutions.sql" not in text
+
+
+def test_queries_solutions_sql_file_removed(skill_dir):
+    p = skill_dir / "references" / "queries-solutions.sql"
+    assert not p.exists()
+
+
+def test_skill_md_generate_fix_sql_uses_recovery_or_rollback(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "recovery_or_rollback" in text
+    assert "rollback statement nếu applicable" not in text
+
+
+def test_skill_md_references_remediation_policy(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "references/remediation-policy.md" in text
