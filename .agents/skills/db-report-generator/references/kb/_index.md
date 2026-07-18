@@ -23,7 +23,7 @@
 **Solution Engine:** `solution-index.md` — master mapping 13 problem pattern → fix cụ thể
 (SQL template, reference file, priority P0–P3, expected impact).
 
-## Danh sách file (31)
+## Danh sách file (32)
 
 **Query Performance** (`query-`)
 - `query-composite-indexes.md`
@@ -42,6 +42,7 @@
 - `security-privileges.md`
 - `security-rls-basics.md`
 - `security-rls-performance.md`
+- `security-sql-injection.md`
 
 **Schema Design** (`schema-`)
 - `schema-data-types.md`
@@ -76,4 +77,4 @@
 
 ---
 
-*30 topic file + 1 solution engine = 31 file. Đồng bộ từ `supabase-postgres-best-practices/references/` ngày 2026-07-16.*
+*31 topic file + 1 solution engine = 32 file. 30 file gốc đồng bộ từ `supabase-postgres-best-practices/references/` ngày 2026-07-16; `security-sql-injection.md` thêm mới trong Phase 5 (2026-07-17) để khớp code-analysis finding "SQL Injection Risk" (pattern 9, xem `solution-index.md`).*
