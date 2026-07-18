@@ -20,7 +20,7 @@
 | 7 | Monitoring & Diagnostics | LOW-MEDIUM | `monitor-` |
 | 8 | Advanced Features | LOW | `advanced-` |
 
-**Solution Engine:** `solution-index.md` — master mapping 13 problem pattern → fix cụ thể
+**Solution Engine:** `solution-index.md` — master mapping 19 problem pattern → fix cụ thể
 (SQL template, reference file, priority P0–P3, expected impact).
 
 ## Danh sách file (32)

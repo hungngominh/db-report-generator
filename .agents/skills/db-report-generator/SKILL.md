@@ -884,6 +884,6 @@ Các query đầy đủ và giải thích chi tiết:
 ## Solution Engine
 
 Hệ thống tạo giải pháp dựa trên knowledge base đóng gói nội bộ tại `references/kb/` (nguồn: supabase-postgres-best-practices, xem `references/kb/_index.md`):
-- `references/kb/solution-index.md` - Master mapping: 13 problem patterns → concrete fixes
+- `references/kb/solution-index.md` - Master mapping: 19 problem patterns → concrete fixes
 - Mỗi fix bao gồm: SQL template, verification query, rollback, expected impact
 - Priority rules: P0 (24h) → P1 (1 tuần) → P2 (1 tháng) → P3 (sprint sau)

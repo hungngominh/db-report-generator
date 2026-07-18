@@ -34,3 +34,9 @@ def test_skill_md_security_rls_axis_references_rls_policies_collector(skill_dir)
     text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
     assert "`rls_policies`" in text
     assert "rỗng — chưa có collector" not in text
+
+
+def test_skill_md_solution_engine_pattern_count_matches_solution_index(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "19 problem patterns" in text
+    assert "13 problem patterns" not in text

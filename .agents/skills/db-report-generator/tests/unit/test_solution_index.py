@@ -92,3 +92,67 @@ def test_no_reference_field_points_outside_kb(skill_dir):
         if line.strip().startswith("- **Reference**"):
             assert "../" not in line
             assert "supabase-postgres-best-practices" not in line
+
+
+def test_new_patterns_14_to_19_present(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    for n, title_fragment in [
+        (14, "RLS POLICY RE-EVALUATION"),
+        (15, "STALE TABLE STATISTICS"),
+        (16, "EXPLAIN PLAN"),
+        (17, "COLUMN-LEVEL INDEX SUGGESTION"),
+        (18, "QUERY RANKING"),
+        (19, "SCHEMA HYGIENE ISSUES"),
+    ]:
+        assert f"## {n}. {title_fragment}" in text
+
+
+def test_pattern_14_rls_cites_real_finding_id(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    idx = text.index("## 14. RLS POLICY RE-EVALUATION")
+    section = text[idx:idx + 1200]
+    assert "`rls_policies`" in section
+    assert "security_rls.rls_policy_issue" in section
+    assert "unwrapped_reeval_call" in section
+    assert "missing_supporting_index" in section
+    assert "`security-rls-performance.md`" in section
+
+
+def test_pattern_17_notes_composite_only_limitation(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    idx = text.index("## 17. COLUMN-LEVEL INDEX SUGGESTION")
+    section = text[idx:idx + 1500]
+    assert "index_advisor" in section
+    assert "query_perf.suggested_column_index" in section
+    assert "không tự sinh" in section.lower()
+
+
+def test_pattern_19_schema_hygiene_cites_real_finding_id(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    idx = text.index("## 19. SCHEMA HYGIENE ISSUES")
+    section = text[idx:idx + 1200]
+    assert "`schema_checks`" in section
+    assert "maintenance.schema_hygiene_issue" in section
+    assert "missing_primary_key" in section
+    assert "oversized_uuid_pk" in section
+    assert "timestamp_without_timezone" in section
+    assert "`schema-primary-keys.md`" in section
+    assert "`schema-data-types.md`" in section
+
+
+def test_kb_index_pattern_count_updated(skill_dir):
+    text = (skill_dir / "references" / "kb" / "_index.md").read_text(encoding="utf-8")
+    assert "19 problem pattern" in text
+    assert "13 problem pattern" not in text
+
+
+def test_at_least_8_of_13_legacy_patterns_have_connected_detection(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    positions = sorted(text.index(f"## {n}.") for n in range(1, 14))
+    positions.append(text.index("## 14."))
+    connected = 0
+    for i in range(13):
+        section = text[positions[i]:positions[i + 1]]
+        if "Gợi ý thủ công" not in section:
+            connected += 1
+    assert connected >= 8

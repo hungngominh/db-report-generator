@@ -464,6 +464,138 @@ WHERE name IN ('shared_buffers', 'work_mem', 'effective_cache_size',
 
 ---
 
+## 14. RLS POLICY RE-EVALUATION PERFORMANCE TRAP
+
+- **Detection**: [Tự động] Diagnostic block `rls_policies` → finding_id `security_rls.rls_policy_issue` (presence rule, assessment cố định `yellow`; `references/rules/security-rls.json`, row_identity `schema,table,policy,clause,issue,function,column`). Field `issue` nhận đúng 2 giá trị: `unwrapped_reeval_call` (gọi `auth.uid()`/`auth.role()`/`auth.jwt()`/`current_setting()` KHÔNG bọc trong scalar subselect — field `function` được set, `column` = null) hoặc `missing_supporting_index` (cột dùng trong equality predicate của policy không có index hỗ trợ — field `column` được set, `function` = null).
+- **Priority**: P1
+- **Reference**: `security-rls-performance.md`
+- **Category**: Security / RLS
+
+**Fix Template:**
+```sql
+-- issue = unwrapped_reeval_call: bọc function trong SELECT để chỉ evaluate 1 lần
+-- ❌ TRƯỚC
+create policy {{policy_name}} on {{schema}}."{{table_name}}"
+  using ({{function}}() = {{column}});
+
+-- ✅ SAU
+create policy {{policy_name}} on {{schema}}."{{table_name}}"
+  using ((select {{function}}()) = {{column}});
+
+-- issue = missing_supporting_index: thêm index cho cột dùng trong policy predicate
+CREATE INDEX CONCURRENTLY idx_{{table_name}}_{{column}}
+ON {{schema}}."{{table_name}}" ({{column}});
+```
+
+**Expected Impact**: 100x+ nhanh hơn trên bảng lớn (function chỉ evaluate 1 lần thay vì mỗi row)
+
+---
+
+## 15. STALE TABLE STATISTICS (ANALYZE Lag)
+
+- **Detection**: [Tự động] Diagnostic block `stale_stats`, field `modified_pct` → finding_id `maintenance.stale_stats_pct` (red > 50%, yellow > 20%; `references/rules/maintenance.json`, row_identity `schema,table`). Block còn trả `n_live_tup`, `n_mod_since_analyze`, `last_analyze`, `last_autoanalyze`.
+- **Priority**: P0 (> 50%) | P1 (20-50%)
+- **Reference**: `monitor-vacuum-analyze.md`
+- **Category**: DB-side / Maintenance
+
+**Fix Template:**
+```sql
+-- Immediate fix
+ANALYZE {{schema}}."{{table_name}}";
+
+-- Long-term: tune autovacuum_analyze_scale_factor cho table hay ghi nhiều
+ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0.02);
+```
+
+**Expected Impact**: Query planner có thống kê chính xác → chọn plan tốt hơn (tránh Seq Scan sai do ước lượng row sai)
+
+---
+
+## 16. EXPLAIN PLAN ĐÍNH KÈM CHO SLOW QUERY
+
+- **Detection**: [Tự động, bổ trợ — không có finding_id riêng] Diagnostic block `explain` (gắn tự động vào top-N query chậm nhất từ mục 4, `ExplainTopN` query). Mỗi row: `{queryid, mode ("plan"|"analyze"), plan (JSON plan hoặc null), explain_unavailable (lý do hoặc null, vd. "parameterized_pre_pg16"), analyze_skipped_reason, role, search_path, database}`. KHÔNG có rule/finding_id nào target block này trong `references/rules/*.json` — đây là bằng chứng bổ trợ đọc kèm finding của mục 4, không phải finding độc lập.
+- **Priority**: (kế thừa priority của mục 4 — không có priority riêng)
+- **Reference**: `monitor-explain-analyze.md`
+- **Category**: Query Performance (bổ trợ cho mục 4)
+
+**Fix Template:**
+```
+Đọc field `plan` (JSON) của query trong finding mục 4 — tìm node `Seq Scan` trên bảng lớn,
+`Nested Loop` chi phí cao, hoặc `Sort` tràn ra disk. Nếu `explain_unavailable` khác null
+(vd. "parameterized_pre_pg16"), không có plan — chỉ dùng window_mean_exec_time_ms của mục 4.
+Áp Fix Template tương ứng ở mục 4 dựa trên node plan tìm được.
+```
+
+**Expected Impact**: Xác nhận chính xác root cause trước khi tạo index (tránh tạo index sai)
+
+---
+
+## 17. COLUMN-LEVEL INDEX SUGGESTION (Composite / Partial / Covering)
+
+- **Detection**: [Tự động, một phần] Diagnostic block `index_advisor` → finding_id `query_perf.suggested_column_index` (presence rule, assessment cố định `yellow`; `references/rules/query-performance.json`, row_identity `schema,table,queryid`). Row: `{schema, table, suggested_columns, suggested_ddl, queryid}`. CHÚ Ý QUAN TRỌNG: hiện chỉ sinh gợi ý index COMPOSITE trên equality-predicate columns — KHÔNG tự sinh gợi ý PARTIAL hay COVERING (INCLUDE); reviewer phải tự cân nhắc 2 sub-loại đó thủ công.
+- **Priority**: P2
+- **Reference**: `query-composite-indexes.md` (tự động) — `query-covering-indexes.md`, `query-partial-indexes.md` (gợi ý thủ công, reviewer tự cân nhắc)
+- **Category**: Query Performance
+
+**Fix Template:**
+```sql
+-- suggested_ddl từ diagnostics.index_advisor.metrics đã sẵn sàng chạy sau khi review:
+{{suggested_ddl}}
+
+-- Trước khi chạy: kiểm tra thủ công xem có nên dùng partial index (WHERE cho soft-delete)
+-- hoặc covering index (INCLUDE thêm cột SELECT) thay vì composite đơn thuần.
+```
+
+**Expected Impact**: 10-100x nhanh hơn cho query có equality predicate chưa được index
+
+---
+
+## 18. QUERY RANKING THEO TỔNG THỜI GIAN THỰC THI (Total Time × Calls)
+
+- **Detection**: [Tự động, bổ trợ — không có finding_id riêng] Diagnostic block `query_stats`, fields `window_total_exec_time_ms`, `window_calls` (sampler đã pre-sort giảm dần theo `window_total_exec_time_ms`, collector không sort lại). KHÔNG có finding_id riêng cho field này (chỉ `window_mean_exec_time_ms` có rule — xem mục 4) — dùng như bảng xếp hạng bổ trợ để ưu tiên tối ưu query nào ảnh hưởng tổng tải nhiều nhất, kể cả khi mean_exec_time không vượt ngưỡng.
+- **Priority**: (bổ trợ — dùng priority của mục 4 nếu cùng query vượt ngưỡng mean_exec_time)
+- **Reference**: `monitor-pg-stat-statements.md`
+- **Category**: Query Performance (bổ trợ cho mục 4)
+
+**Fix Template:**
+```
+Sắp xếp diagnostics.query_stats.metrics theo window_total_exec_time_ms giảm dần (đã sort sẵn) —
+ưu tiên tối ưu N query đầu tiên trước, dùng cùng Fix Template với mục 4.
+```
+
+**Expected Impact**: Ưu tiên đúng thứ tự tối ưu theo tổng tải thực tế, không chỉ theo mean latency
+
+---
+
+## 19. SCHEMA HYGIENE ISSUES (Missing PK / Oversized UUIDv4 PK / Timestamp Without Timezone)
+
+- **Detection**: [Tự động] Diagnostic block `schema_checks` → finding_id `maintenance.schema_hygiene_issue` (presence rule, assessment cố định `yellow`; `references/rules/maintenance.json`, row_identity `schema,table,issue,column`). Field `issue` nhận đúng 3 giá trị: `missing_primary_key` (table không có PK — `column` = null), `oversized_uuid_pk` (PK là UUIDv4 VÀ table có `row_estimate` vượt `_LARGE_TABLE_ROW_THRESHOLD`, mặc định 1,000,000 rows), `timestamp_without_timezone` (cột kiểu `timestamp without time zone`).
+- **Priority**: P1 (`missing_primary_key`) | P2 (`oversized_uuid_pk`, `timestamp_without_timezone`)
+- **Reference**: `schema-primary-keys.md` (missing_primary_key, oversized_uuid_pk), `schema-data-types.md` (timestamp_without_timezone)
+- **Category**: DB-side / Schema
+
+**Fix Template:**
+```sql
+-- issue = missing_primary_key
+ALTER TABLE {{schema}}."{{table_name}}" ADD PRIMARY KEY ({{suggested_column}});
+-- Nếu chưa có cột phù hợp: thêm cột id trước
+ALTER TABLE {{schema}}."{{table_name}}" ADD COLUMN id bigint generated always as identity;
+ALTER TABLE {{schema}}."{{table_name}}" ADD PRIMARY KEY (id);
+
+-- issue = oversized_uuid_pk: không đổi PK ngay trên bảng lớn (risky) — bảng mới nên
+-- dùng UUIDv7 (time-ordered) thay vì UUIDv4 ngay từ đầu, xem schema-primary-keys.md
+
+-- issue = timestamp_without_timezone
+ALTER TABLE {{schema}}."{{table_name}}" ALTER COLUMN {{column}} TYPE timestamptz
+  USING {{column}} AT TIME ZONE 'UTC';
+```
+
+**Expected Impact**: `missing_primary_key` → cho phép logical replication/CDC (yêu cầu PK hoặc REPLICA IDENTITY), tránh duplicate rows khi retry insert. `oversized_uuid_pk` → tránh index fragmentation trên bảng lớn (insert ngẫu nhiên vào b-tree). `timestamp_without_timezone` → tránh bug do ambiguous timezone khi app server và DB server ở múi giờ khác nhau.
+
+---
+
+*Bảng dưới đây là ma trận ưu tiên rút gọn kế thừa từ v3, chỉ áp dụng cho pattern 1-13. Pattern 14-19 (bổ sung P5) dùng Priority ghi trực tiếp trong từng mục, không nằm trong bảng này.*
+
 ## Priority Assignment Rules
 
 | Condition | Priority |
