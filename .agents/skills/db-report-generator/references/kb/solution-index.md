@@ -204,7 +204,7 @@ CREATE INDEX CONCURRENTLY "{{index_name}}" ON {{schema}}."{{table_name}}" ({{col
 
 **Fix Template** (KHÔNG đưa vào block chạy-liền — chỉ tham khảo cho review thủ công):
 ```sql
--- Immediate: kill sessions kẹt trong transaction > 5 phút (KHÔNG kill 'idle' thường — có thể đang được connection pool giữ lại)
+-- Immediate: kill sessions kẹt trong transaction > 5 phút (KHÔNG kill 'idle' thường — có thể đang được PgBouncer/Supavisor pool giữ lại)
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
 WHERE state = 'idle in transaction'
@@ -212,7 +212,7 @@ WHERE state = 'idle in transaction'
   AND datname = current_database();
 
 -- Config idle timeout
--- CHỈ chạy nếu capabilities.managed == false (self-hosted) — managed platform (Supabase/RDS) không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
+-- CHỈ chạy nếu capabilities.managed == false VÀ capabilities.is_superuser == true — managed platform (Supabase/RDS) không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
 ALTER SYSTEM SET idle_in_transaction_session_timeout = '30s';
 ALTER SYSTEM SET idle_session_timeout = '10min';
 SELECT pg_reload_conf();
@@ -256,7 +256,7 @@ SELECT pg_reload_conf();
 SELECT pg_terminate_backend({{blocking_pid}});
 
 -- Long-term: set statement_timeout
--- CHỈ chạy nếu capabilities.managed == false (self-hosted) — managed platform không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
+-- CHỈ chạy nếu capabilities.managed == false VÀ capabilities.is_superuser == true — managed platform không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
 ALTER SYSTEM SET statement_timeout = '30s';
 ALTER SYSTEM SET lock_timeout = '10s';
 SELECT pg_reload_conf();

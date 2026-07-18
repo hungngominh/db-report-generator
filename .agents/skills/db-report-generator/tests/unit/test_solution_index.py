@@ -211,6 +211,7 @@ def test_pattern_6_terminates_idle_in_transaction_only(skill_dir):
     block = text[start:end]
     assert "idle in transaction" in block
     assert "state = 'idle'" not in block
+    assert "PgBouncer" in block and "Supavisor" in block, "pattern 6 missing named pool-kill warning"
 
 
 def test_patterns_6_7_13_gate_alter_system_on_self_hosted(skill_dir):
@@ -224,6 +225,7 @@ def test_patterns_6_7_13_gate_alter_system_on_self_hosted(skill_dir):
         end = text.index(next_heading)
         block = text[start:end]
         assert "capabilities.managed" in block, f"{heading} missing capability gate"
+        assert "capabilities.is_superuser" in block, f"{heading} missing is_superuser gate"
 
 
 def test_pattern_11_no_data_loss_swap(skill_dir):
