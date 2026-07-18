@@ -156,3 +156,97 @@ def test_at_least_8_of_13_legacy_patterns_have_connected_detection(skill_dir):
         if "Gợi ý thủ công" not in section:
             connected += 1
     assert connected >= 8
+
+
+def test_all_patterns_have_remediation_class(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    headings = [
+        "## 1. LOW CACHE HIT RATIO",
+        "## 2. HIGH SEQUENTIAL SCAN RATIO",
+        "## 3. HIGH DEAD TUPLE RATIO",
+        "## 4. SLOW QUERIES",
+        "## 5. UNUSED INDEXES",
+        "## 6. CONNECTION EXHAUSTION",
+        "## 7. BLOCKING QUERIES",
+        "## 8. N+1 QUERY PATTERN",
+        "## 9. SQL INJECTION RISK",
+        "## 10. MISSING PAGINATION",
+        "## 11. LARGE TABLE WITHOUT PARTITIONING",
+        "## 12. MISSING FOREIGN KEY INDEXES",
+        "## 13. SUBOPTIMAL SERVER CONFIGURATION",
+        "## 14. RLS POLICY RE-EVALUATION",
+        "## 15. STALE TABLE STATISTICS",
+        "## 16. EXPLAIN PLAN",
+        "## 17. COLUMN-LEVEL INDEX SUGGESTION",
+        "## 18. QUERY RANKING",
+        "## 19. SCHEMA HYGIENE ISSUES",
+    ]
+    boundary = "## Priority Assignment Rules"
+    positions = [text.index(h) for h in headings] + [text.index(boundary)]
+    for i in range(len(headings)):
+        section = text[positions[i]:positions[i + 1]]
+        assert "**Remediation Class**" in section, f"missing Remediation Class in {headings[i]}"
+
+
+def test_dangerous_patterns_marked_and_excluded_from_run_now(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    for heading, next_heading in [
+        ("## 5. UNUSED INDEXES", "## 6. CONNECTION EXHAUSTION"),
+        ("## 6. CONNECTION EXHAUSTION", "## 7. BLOCKING QUERIES"),
+        ("## 7. BLOCKING QUERIES", "## 8. N+1 QUERY PATTERN"),
+        ("## 11. LARGE TABLE WITHOUT PARTITIONING", "## 12. MISSING FOREIGN KEY INDEXES"),
+        ("## 13. SUBOPTIMAL SERVER CONFIGURATION", "## 14. RLS POLICY RE-EVALUATION"),
+    ]:
+        start = text.index(heading)
+        end = text.index(next_heading)
+        block = text[start:end]
+        assert "`dangerous`" in block, f"{heading} not marked dangerous"
+        assert "KHÔNG đưa vào block chạy-liền" in block, f"{heading} missing run-now exclusion note"
+
+
+def test_pattern_6_terminates_idle_in_transaction_only(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    start = text.index("## 6. CONNECTION EXHAUSTION")
+    end = text.index("## 7. BLOCKING QUERIES")
+    block = text[start:end]
+    assert "idle in transaction" in block
+    assert "state = 'idle'" not in block
+
+
+def test_patterns_6_7_13_gate_alter_system_on_self_hosted(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    for heading, next_heading in [
+        ("## 6. CONNECTION EXHAUSTION", "## 7. BLOCKING QUERIES"),
+        ("## 7. BLOCKING QUERIES", "## 8. N+1 QUERY PATTERN"),
+        ("## 13. SUBOPTIMAL SERVER CONFIGURATION", "## 14. RLS POLICY RE-EVALUATION"),
+    ]:
+        start = text.index(heading)
+        end = text.index(next_heading)
+        block = text[start:end]
+        assert "capabilities.managed" in block, f"{heading} missing capability gate"
+
+
+def test_pattern_11_no_data_loss_swap(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    start = text.index("## 11. LARGE TABLE WITHOUT PARTITIONING")
+    end = text.index("## 12. MISSING FOREIGN KEY INDEXES")
+    block = text[start:end]
+    assert "RENAME TO" not in block
+    assert "pg_partman" in block
+
+
+def test_pattern_5_has_recovery_or_rollback_heading(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    start = text.index("## 5. UNUSED INDEXES")
+    end = text.index("## 6. CONNECTION EXHAUSTION")
+    block = text[start:end]
+    assert "**recovery_or_rollback" in block
+    assert "**Rollback:**" not in block
+
+
+def test_pattern_13_no_hardcoded_multiplier_and_gated(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    start = text.index("## 13. SUBOPTIMAL SERVER CONFIGURATION")
+    end = text.index("## 14. RLS POLICY RE-EVALUATION")
+    block = text[start:end]
+    assert "2-5x" not in block

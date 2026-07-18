@@ -18,6 +18,7 @@ Khi db-report-generator phát hiện vấn đề, nó tra cứu file này để 
 
 - **Detection**: [Tự động] Diagnostic block `database_stats`, field `cache_hit_ratio` (0.0–1.0, KHÔNG phải `_pct`) → finding_id `db_health.cache_hit_ratio` (red < 0.80, yellow < 0.90; `references/rules/db-health.json`). LƯU Ý: đây là cache hit ratio cấp DATABASE, không phải cấp table — không có collector nào query `pg_statio_user_tables`. Cho cache hit cấp INDEX, xem block `index_io` / finding_id `query_perf.index_cache_hit_ratio`.
 - **Priority**: P0 (< 50%) | P1 (50-80%) | P2 (80-90%)
+- **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-covering-indexes.md`
 - **Category**: DB-side / Index
 
@@ -52,6 +53,7 @@ FROM pg_statio_user_tables WHERE relname = '{{table_name}}';
 
 - **Detection**: [Gợi ý thủ công — không có collector] Không có block/collector nào trong db-report-generator v4 thu thập `seq_scan`/`idx_scan` cấp table (`pg_stat_user_tables`). Đây KHÔNG phải một automated finding — dùng Fix Template bên dưới như một truy vấn thủ công khi nghi ngờ table bị seq scan nhiều (vd. khi thấy `Seq Scan` trong EXPLAIN plan của mục 4/16).
 - **Priority**: P0 (> 80% seq, > 100K rows) | P1 (> 50% seq, > 10K rows)
+- **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-composite-indexes.md`
 - **Category**: DB-side / Index (thủ công)
 
@@ -81,6 +83,7 @@ FROM pg_stat_user_tables WHERE relname = '{{table_name}}';
 
 - **Detection**: [Tự động] Diagnostic block `dead_tuples`, field `dead_pct` → finding_id `maintenance.dead_tuples_pct` (red > 20%, yellow > 5%; `references/rules/maintenance.json`, row_identity `schema,table`). Block trả `n_live`/`n_dead` (KHÔNG phải `n_live_tup`/`n_dead_tup` như tên cột gốc `pg_stat_user_tables`).
 - **Priority**: P0 (> 50%) | P1 (20-50%) | P2 (5-20%)
+- **Remediation Class**: `maintenance-review`
 - **Reference**: `monitor-vacuum-analyze.md`
 - **Category**: DB-side / Maintenance
 
@@ -122,6 +125,7 @@ ALTER TABLE {{schema}}."{{table_name}}" RESET (
 
 - **Detection**: [Tự động] Diagnostic block `query_stats`, field `window_mean_exec_time_ms` (mean trong sampling window, KHÔNG phải `mean_exec_time` tích lũy) → finding_id `query_perf.slow_query_mean_exec_time` (red > 1000ms, yellow > 100ms; `references/rules/query-performance.json`, row_identity `queryid`). EXPLAIN plan tự động gắn kèm top-N query chậm nhất — xem mục 16. Xếp hạng bổ sung theo tổng thời gian × số lần gọi — xem mục 18.
 - **Priority**: P0 (> 5000ms) | P1 (1000-5000ms) | P2 (100-1000ms)
+- **Remediation Class**: `ddl-review`
 - **Reference**: `monitor-explain-analyze.md`, `query-composite-indexes.md`
 - **Category**: DB-side / Query + Index
 
@@ -163,22 +167,26 @@ FROM pg_stat_statements WHERE queryid = {{queryid}};
 
 - **Detection**: [Tự động, một phần — xác nhận thủ công trước khi DROP] Diagnostic block `index_io`, field `idx_scan` = 0. 2 giới hạn: (1) `index_io` chỉ thu top-30 index theo `idx_blks_read`, KHÔNG đầy đủ toàn bộ index của DB; (2) hiện KHÔNG có finding_id/rule riêng cho `idx_scan = 0` (`references/rules/query-performance.json` chỉ có `query_perf.index_cache_hit_ratio` cho block này) — nghĩa là finding này KHÔNG tự xuất hiện trong report's rule-driven findings, chỉ tra được thủ công trong `diagnostics.index_io.metrics`.
 - **Priority**: P2 (< 100MB) | P3 (> 100MB nhưng cần verify 2+ tuần)
+- **Remediation Class**: `dangerous` — KHÔNG đưa vào block chạy-liền, chỉ đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)".
 - **Reference**: _Không có file KB match chính xác cho "unused index cleanup" — `query-missing-indexes.md` nói về vấn đề NGƯỢC LẠI (thiếu index). Dùng Fix Template bên dưới, không cần tài liệu bổ sung._
 - **Category**: DB-side / Cleanup
 
-**Fix Template:**
+**Fix Template** (KHÔNG đưa vào block chạy-liền — chỉ tham khảo cho review thủ công):
 ```sql
 -- Verify index thực sự unused (kiểm tra ít nhất 2 tuần data)
 SELECT indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid)) AS size
 FROM pg_stat_user_indexes WHERE indexrelname = '{{index_name}}';
 
+-- Lưu lại definition TRƯỚC khi DROP, để có thể recreate sau này
+SELECT indexdef FROM pg_indexes WHERE indexname = '{{index_name}}';
+
 -- Nếu confirm unused:
 DROP INDEX CONCURRENTLY {{schema}}."{{index_name}}";
 ```
 
-**Rollback:**
+**recovery_or_rollback:**
 ```sql
--- Recreate index nếu cần
+-- Recreate index dùng definition đã lưu ở bước trên (SELECT indexdef ...)
 CREATE INDEX CONCURRENTLY "{{index_name}}" ON {{schema}}."{{table_name}}" ({{columns}});
 ```
 
@@ -190,19 +198,21 @@ CREATE INDEX CONCURRENTLY "{{index_name}}" ON {{schema}}."{{table_name}}" ({{col
 
 - **Detection**: [Tự động] Diagnostic block `connection_depth`. 3 finding_id riêng biệt (`references/rules/connections.json`) — KHÔNG gộp chung "total/max" như v3: `connections.cluster_pressure` (tỷ lệ `cluster_connections`/`cluster_max_connections`, red > 0.90, yellow > 0.60), `connections.pool_pressure` (tỷ lệ `db_connections`/`configured_pool_size`, red > 0.90, yellow > 0.60), `connections.idle_in_transaction` (field `longest_txn_seconds`, red > 600s, yellow > 60s).
 - **Priority**: P0 (> 90%) | P1 (80-90%)
+- **Remediation Class**: `dangerous` — KHÔNG đưa vào block chạy-liền, chỉ đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)".
 - **Reference**: `conn-pooling.md`, `conn-limits.md`, `conn-idle-timeout.md`
 - **Category**: Architecture / Connection Management
 
-**Fix Template:**
+**Fix Template** (KHÔNG đưa vào block chạy-liền — chỉ tham khảo cho review thủ công):
 ```sql
--- Immediate: kill idle connections > 10 phút
+-- Immediate: kill sessions kẹt trong transaction > 5 phút (KHÔNG kill 'idle' thường — có thể đang được connection pool giữ lại)
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
-WHERE state = 'idle'
-  AND state_change < now() - interval '10 minutes'
+WHERE state = 'idle in transaction'
+  AND state_change < now() - interval '5 minutes'
   AND datname = current_database();
 
 -- Config idle timeout
+-- CHỈ chạy nếu capabilities.managed == false (self-hosted) — managed platform (Supabase/RDS) không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
 ALTER SYSTEM SET idle_in_transaction_session_timeout = '30s';
 ALTER SYSTEM SET idle_session_timeout = '10min';
 SELECT pg_reload_conf();
@@ -219,6 +229,15 @@ SELECT pg_reload_conf();
 // }
 ```
 
+**recovery_or_rollback:**
+```sql
+-- pg_terminate_backend: KHÔNG có rollback — session đã terminate không khôi phục lại được.
+-- ALTER SYSTEM: reset lại giá trị mặc định
+ALTER SYSTEM RESET idle_in_transaction_session_timeout;
+ALTER SYSTEM RESET idle_session_timeout;
+SELECT pg_reload_conf();
+```
+
 **Expected Impact**: Giải phóng 30-50% connection slots
 
 ---
@@ -227,15 +246,17 @@ SELECT pg_reload_conf();
 
 - **Detection**: [Tự động] Diagnostic block `blocking`, field `blocked_duration_seconds` (kèm `blocked_pid`, `blocking_pid`, `blocked_query`, `blocking_query`) → finding_id `connections.blocking` (red > 30s, yellow > 5s; `references/rules/connections.json`, row_identity `blocked_pid,blocking_pid`).
 - **Priority**: P0
+- **Remediation Class**: `dangerous` — KHÔNG đưa vào block chạy-liền, chỉ đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)".
 - **Reference**: `lock-short-transactions.md`, `lock-deadlock-prevention.md`
 - **Category**: DB-side / Locking
 
-**Fix Template:**
+**Fix Template** (KHÔNG đưa vào block chạy-liền — chỉ tham khảo cho review thủ công):
 ```sql
 -- Immediate: terminate blocking query (nếu safe)
 SELECT pg_terminate_backend({{blocking_pid}});
 
 -- Long-term: set statement_timeout
+-- CHỈ chạy nếu capabilities.managed == false (self-hosted) — managed platform không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard
 ALTER SYSTEM SET statement_timeout = '30s';
 ALTER SYSTEM SET lock_timeout = '10s';
 SELECT pg_reload_conf();
@@ -250,6 +271,15 @@ SELECT pg_reload_conf();
 // optionsBuilder.UseNpgsql(connStr, o => o.CommandTimeout(30));
 ```
 
+**recovery_or_rollback:**
+```sql
+-- pg_terminate_backend: KHÔNG có rollback — session đã terminate không khôi phục lại được.
+-- ALTER SYSTEM: reset lại giá trị mặc định
+ALTER SYSTEM RESET statement_timeout;
+ALTER SYSTEM RESET lock_timeout;
+SELECT pg_reload_conf();
+```
+
 **Expected Impact**: Immediate unblocking, 3-5x throughput
 
 ---
@@ -258,6 +288,7 @@ SELECT pg_reload_conf();
 
 - **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep loop chứa DB call bên trong (không phải collector Python) — confidence tier mặc định `estimated` (cần agent tự xác nhận loop có thực sự gọi DB mỗi vòng), theo bảng độ tin cậy §5.8.
 - **Priority**: P1
+- **Remediation Class**: `n/a (code-side fix, không phải remediation DB)`
 - **Reference**: `data-n-plus-one.md`
 - **Category**: Code-side / Query Pattern
 
@@ -303,6 +334,7 @@ var allOrders = conn.Query(
 
 - **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep string-concatenated/interpolated SQL context — confidence tier `measured` khi chuỗi text nối SQL xuất hiện rõ ràng (vd. `"SELECT * FROM " + table`), theo bảng độ tin cậy §5.8.
 - **Priority**: P0
+- **Remediation Class**: `n/a (code-side fix, không phải remediation DB)`
 - **Reference**: `security-sql-injection.md`
 - **Category**: Code-side / Security
 
@@ -329,6 +361,7 @@ conn.Query("SELECT * FROM Users WHERE Name = @Name", new { Name = input });
 
 - **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep query trả về tất cả rows không có LIMIT/OFFSET/cursor — confidence tier `heuristic` (suy luận từ việc KHÔNG thấy LIMIT, không phải bằng chứng trực tiếp), theo bảng độ tin cậy §5.8.
 - **Priority**: P1 (tables > 10K rows) | P2 (tables > 1K rows)
+- **Remediation Class**: `n/a (code-side fix, không phải remediation DB)`
 - **Reference**: `data-pagination.md`
 - **Category**: Code-side / Query Pattern
 
@@ -362,33 +395,21 @@ var page = db.Orders
 
 - **Detection**: [Gợi ý thủ công — không có collector] Không có block nào kiểm tra partitioning trong db-report-generator v4. Diagnostic block `table_index_size`, field `row_estimate` (từ `pg_class.reltuples`) có thể dùng làm input thủ công để tìm bảng lớn — nhưng KHÔNG có rule/finding_id nào đánh giá `row_estimate`, và việc xác định "time-series column" đòi hỏi agent tự đọc schema thủ công.
 - **Priority**: P2
+- **Remediation Class**: `dangerous` — KHÔNG đưa vào block chạy-liền, chỉ đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)".
 - **Reference**: `schema-partitioning.md`
 - **Category**: Architecture / Schema (thủ công)
 
-**Fix Template:**
-```sql
--- Tạo partitioned table mới
-CREATE TABLE {{table_name}}_partitioned (
-  LIKE {{schema}}."{{table_name}}" INCLUDING ALL
-) PARTITION BY RANGE ("{{time_column}}");
+**Hướng dẫn (không tự động sinh SQL swap mất dữ liệu):**
 
--- Tạo monthly partitions
-CREATE TABLE {{table_name}}_y2026m01
-  PARTITION OF {{table_name}}_partitioned
-  FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+1. Ưu tiên dùng extension **pg_partman** để quản lý partition tự động thay vì migrate thủ công.
+2. Nếu tự làm thủ công:
+   - Backup trước (pg_dump hoặc snapshot).
+   - Tạo bảng partition mới, migrate dữ liệu theo batch nhỏ (KHÔNG `INSERT ... SELECT *` toàn bộ một lần).
+   - Verify row-count khớp giữa bảng gốc và bảng partition mới.
+   - Tái tạo tường minh: foreign key constraints, RLS policies, triggers, GRANTs (những thứ này KHÔNG tự động theo qua khi tạo bảng mới).
+   - Chỉ swap tên bảng trong một maintenance window đã thông báo trước.
 
-CREATE TABLE {{table_name}}_y2026m02
-  PARTITION OF {{table_name}}_partitioned
-  FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
-
--- Migrate data (off-peak hours)
-INSERT INTO {{table_name}}_partitioned
-SELECT * FROM {{schema}}."{{table_name}}";
-
--- Swap tables
-ALTER TABLE {{schema}}."{{table_name}}" RENAME TO "{{table_name}}_old";
-ALTER TABLE {{table_name}}_partitioned RENAME TO "{{table_name}}";
-```
+**recovery_or_rollback**: Không có rollback giao dịch cho bước swap bảng — khôi phục chỉ có thể thực hiện từ backup đã chụp trước khi migrate.
 
 **Expected Impact**: 5-20x faster queries, instant old data deletion
 
@@ -398,6 +419,7 @@ ALTER TABLE {{table_name}}_partitioned RENAME TO "{{table_name}}";
 
 - **Detection**: [Tự động] Diagnostic block `fk_missing_index`, fields `schema`, `table`, `constraint`, `columns`, `suggested_ddl` → finding_id `maintenance.fk_missing_index` (presence rule, assessment cố định `red`; `references/rules/maintenance.json`, row_identity `schema,table,constraint`).
 - **Priority**: P1
+- **Remediation Class**: `ddl-review`
 - **Reference**: `schema-foreign-key-indexes.md`
 - **Category**: DB-side / Index
 
@@ -429,11 +451,14 @@ WHERE c.contype = 'f'
 
 - **Detection**: [Gợi ý thủ công — không có collector] Không có block nào query `pg_settings` trong db-report-generator v4. Dùng Verify query bên dưới như một truy vấn thủ công.
 - **Priority**: P1 (shared_buffers < 15% RAM) | P2 (work_mem < 4MB)
+- **Remediation Class**: `dangerous` — KHÔNG đưa vào block chạy-liền, chỉ đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)".
 - **Reference**: `conn-limits.md`
 - **Category**: DB-side / Configuration (thủ công)
 
-**Fix Template (ví dụ server 16GB RAM):**
+**Fix Template (ví dụ server 16GB RAM):** (KHÔNG đưa vào block chạy-liền — chỉ tham khảo cho review thủ công)
 ```sql
+-- CHỈ áp dụng khi capabilities.managed == false VÀ capabilities.is_superuser == true — managed platform (Supabase/RDS) không hỗ trợ ALTER SYSTEM, đổi qua console/dashboard của nhà cung cấp.
+
 -- Quan trọng nhất
 ALTER SYSTEM SET shared_buffers = '4GB';           -- 25% RAM
 ALTER SYSTEM SET effective_cache_size = '12GB';     -- 75% RAM
@@ -460,7 +485,20 @@ WHERE name IN ('shared_buffers', 'work_mem', 'effective_cache_size',
   'random_page_cost', 'effective_io_concurrency');
 ```
 
-**Expected Impact**: 2-5x overall performance improvement
+**recovery_or_rollback:**
+```sql
+ALTER SYSTEM RESET shared_buffers;
+ALTER SYSTEM RESET effective_cache_size;
+ALTER SYSTEM RESET work_mem;
+ALTER SYSTEM RESET maintenance_work_mem;
+ALTER SYSTEM RESET random_page_cost;
+ALTER SYSTEM RESET effective_io_concurrency;
+ALTER SYSTEM RESET wal_buffers;
+ALTER SYSTEM RESET checkpoint_completion_target;
+SELECT pg_reload_conf();
+```
+
+**Expected Impact**: Phụ thuộc vào workload cụ thể — selectivity của query, kích thước working set so với RAM, và tỷ lệ cache hit hiện tại. Không có con số cố định; đo lại `db_health.cache_hit_ratio` và query latency sau khi áp dụng để đánh giá tác động thực tế.
 
 ---
 
@@ -468,6 +506,7 @@ WHERE name IN ('shared_buffers', 'work_mem', 'effective_cache_size',
 
 - **Detection**: [Tự động] Diagnostic block `rls_policies` → finding_id `security_rls.rls_policy_issue` (presence rule, assessment cố định `yellow`; `references/rules/security-rls.json`, row_identity `schema,table,policy,clause,issue,function,column`). Field `issue` nhận đúng 2 giá trị: `unwrapped_reeval_call` (gọi `auth.uid()`/`auth.role()`/`auth.jwt()`/`current_setting()` KHÔNG bọc trong scalar subselect — field `function` được set, `column` = null) hoặc `missing_supporting_index` (cột dùng trong equality predicate của policy không có index hỗ trợ — field `column` được set, `function` = null).
 - **Priority**: P1
+- **Remediation Class**: `ddl-review`
 - **Reference**: `security-rls-performance.md`
 - **Category**: Security / RLS
 
@@ -495,6 +534,7 @@ ON {{schema}}."{{table_name}}" ({{column}});
 
 - **Detection**: [Tự động] Diagnostic block `stale_stats`, field `modified_pct` → finding_id `maintenance.stale_stats_pct` (red > 50%, yellow > 20%; `references/rules/maintenance.json`, row_identity `schema,table`). Block còn trả `n_live_tup`, `n_mod_since_analyze`, `last_analyze`, `last_autoanalyze`.
 - **Priority**: P0 (> 50%) | P1 (20-50%)
+- **Remediation Class**: `maintenance-review`
 - **Reference**: `monitor-vacuum-analyze.md`
 - **Category**: DB-side / Maintenance
 
@@ -515,6 +555,7 @@ ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0
 
 - **Detection**: [Tự động, một phần — không có finding_id riêng] Diagnostic block `explain` (gắn tự động vào top-N query chậm nhất từ mục 4, `ExplainTopN` query). Mỗi row: `{queryid, mode ("plan"|"analyze"), plan (JSON plan hoặc null), explain_unavailable (lý do hoặc null, vd. "parameterized_pre_pg16"), analyze_skipped_reason, role, search_path, database}`. KHÔNG có rule/finding_id nào target block này trong `references/rules/*.json` — đây là bằng chứng bổ trợ đọc kèm finding của mục 4, không phải finding độc lập.
 - **Priority**: (kế thừa priority của mục 4 — không có priority riêng)
+- **Remediation Class**: `observe-only` (mặc định, EXPLAIN không ANALYZE) / `controlled-diagnostic` (khi ANALYZE opt-in)
 - **Reference**: `monitor-explain-analyze.md`
 - **Category**: Query Performance (bổ trợ cho mục 4)
 
@@ -534,6 +575,7 @@ ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0
 
 - **Detection**: [Tự động, một phần] Diagnostic block `index_advisor` → finding_id `query_perf.suggested_column_index` (presence rule, assessment cố định `yellow`; `references/rules/query-performance.json`, row_identity `schema,table,queryid`). Row: `{schema, table, suggested_columns, suggested_ddl, queryid}`. CHÚ Ý QUAN TRỌNG: hiện chỉ sinh gợi ý index COMPOSITE trên equality-predicate columns — KHÔNG tự sinh gợi ý PARTIAL hay COVERING (INCLUDE); reviewer phải tự cân nhắc 2 sub-loại đó thủ công.
 - **Priority**: P2
+- **Remediation Class**: `ddl-review`
 - **Reference**: `query-composite-indexes.md` (tự động) — `query-covering-indexes.md`, `query-partial-indexes.md` (gợi ý thủ công, reviewer tự cân nhắc)
 - **Category**: Query Performance
 
@@ -554,6 +596,7 @@ ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0
 
 - **Detection**: [Tự động, một phần — không có finding_id riêng] Diagnostic block `query_stats`, fields `window_total_exec_time_ms`, `window_calls` (sampler đã pre-sort giảm dần theo `window_total_exec_time_ms`, collector không sort lại). KHÔNG có finding_id riêng cho field này (chỉ `window_mean_exec_time_ms` có rule — xem mục 4) — dùng như bảng xếp hạng bổ trợ để ưu tiên tối ưu query nào ảnh hưởng tổng tải nhiều nhất, kể cả khi mean_exec_time không vượt ngưỡng.
 - **Priority**: (bổ trợ — dùng priority của mục 4 nếu cùng query vượt ngưỡng mean_exec_time)
+- **Remediation Class**: `observe-only`
 - **Reference**: `monitor-pg-stat-statements.md`
 - **Category**: Query Performance (bổ trợ cho mục 4)
 
@@ -571,6 +614,7 @@ Sắp xếp diagnostics.query_stats.metrics theo window_total_exec_time_ms giả
 
 - **Detection**: [Tự động] Diagnostic block `schema_checks` → finding_id `maintenance.schema_hygiene_issue` (presence rule, assessment cố định `yellow`; `references/rules/maintenance.json`, row_identity `schema,table,issue,column`). Field `issue` nhận đúng 3 giá trị: `missing_primary_key` (table không có PK — `column` = null), `oversized_uuid_pk` (PK là UUIDv4 VÀ table có `row_estimate` vượt `_LARGE_TABLE_ROW_THRESHOLD`, mặc định 1,000,000 rows), `timestamp_without_timezone` (cột kiểu `timestamp without time zone`).
 - **Priority**: P1 (`missing_primary_key`) | P2 (`oversized_uuid_pk`, `timestamp_without_timezone`)
+- **Remediation Class**: `ddl-review`
 - **Reference**: `schema-primary-keys.md` (missing_primary_key, oversized_uuid_pk), `schema-data-types.md` (timestamp_without_timezone)
 - **Category**: DB-side / Schema
 
