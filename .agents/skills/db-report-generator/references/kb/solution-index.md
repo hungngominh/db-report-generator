@@ -513,7 +513,7 @@ ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0
 
 ## 16. EXPLAIN PLAN ĐÍNH KÈM CHO SLOW QUERY
 
-- **Detection**: [Tự động, bổ trợ — không có finding_id riêng] Diagnostic block `explain` (gắn tự động vào top-N query chậm nhất từ mục 4, `ExplainTopN` query). Mỗi row: `{queryid, mode ("plan"|"analyze"), plan (JSON plan hoặc null), explain_unavailable (lý do hoặc null, vd. "parameterized_pre_pg16"), analyze_skipped_reason, role, search_path, database}`. KHÔNG có rule/finding_id nào target block này trong `references/rules/*.json` — đây là bằng chứng bổ trợ đọc kèm finding của mục 4, không phải finding độc lập.
+- **Detection**: [Tự động, một phần — không có finding_id riêng] Diagnostic block `explain` (gắn tự động vào top-N query chậm nhất từ mục 4, `ExplainTopN` query). Mỗi row: `{queryid, mode ("plan"|"analyze"), plan (JSON plan hoặc null), explain_unavailable (lý do hoặc null, vd. "parameterized_pre_pg16"), analyze_skipped_reason, role, search_path, database}`. KHÔNG có rule/finding_id nào target block này trong `references/rules/*.json` — đây là bằng chứng bổ trợ đọc kèm finding của mục 4, không phải finding độc lập.
 - **Priority**: (kế thừa priority của mục 4 — không có priority riêng)
 - **Reference**: `monitor-explain-analyze.md`
 - **Category**: Query Performance (bổ trợ cho mục 4)
@@ -552,7 +552,7 @@ ALTER TABLE {{schema}}."{{table_name}}" SET (autovacuum_analyze_scale_factor = 0
 
 ## 18. QUERY RANKING THEO TỔNG THỜI GIAN THỰC THI (Total Time × Calls)
 
-- **Detection**: [Tự động, bổ trợ — không có finding_id riêng] Diagnostic block `query_stats`, fields `window_total_exec_time_ms`, `window_calls` (sampler đã pre-sort giảm dần theo `window_total_exec_time_ms`, collector không sort lại). KHÔNG có finding_id riêng cho field này (chỉ `window_mean_exec_time_ms` có rule — xem mục 4) — dùng như bảng xếp hạng bổ trợ để ưu tiên tối ưu query nào ảnh hưởng tổng tải nhiều nhất, kể cả khi mean_exec_time không vượt ngưỡng.
+- **Detection**: [Tự động, một phần — không có finding_id riêng] Diagnostic block `query_stats`, fields `window_total_exec_time_ms`, `window_calls` (sampler đã pre-sort giảm dần theo `window_total_exec_time_ms`, collector không sort lại). KHÔNG có finding_id riêng cho field này (chỉ `window_mean_exec_time_ms` có rule — xem mục 4) — dùng như bảng xếp hạng bổ trợ để ưu tiên tối ưu query nào ảnh hưởng tổng tải nhiều nhất, kể cả khi mean_exec_time không vượt ngưỡng.
 - **Priority**: (bổ trợ — dùng priority của mục 4 nếu cùng query vượt ngưỡng mean_exec_time)
 - **Reference**: `monitor-pg-stat-statements.md`
 - **Category**: Query Performance (bổ trợ cho mục 4)
