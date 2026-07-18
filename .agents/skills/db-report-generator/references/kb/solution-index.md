@@ -1,7 +1,7 @@
 ---
 title: Solution Index - Problem-to-Fix Mapping
-description: Maps detected DB/code problems to concrete solutions. Used by db-report-generator v3.0+ as the solution engine.
-version: "1.0.0"
+description: Maps detected DB/code problems (19 patterns, signal-verified P5) to concrete solutions. Used by db-report-generator v4.0+ as the solution engine.
+version: "2.0.0"
 ---
 
 # Solution Index
@@ -10,11 +10,13 @@ Mỗi entry mapping: **Problem Pattern → Concrete Fix + Priority + Impact**
 
 Khi db-report-generator phát hiện vấn đề, nó tra cứu file này để tạo PERFORMANCE_SOLUTIONS.md với SQL/code fix sẵn sàng chạy.
 
+> **Chú giải Detection** (P5 — nối KB thật với tín hiệu tool thật): `[Tự động]` = tool tự thu thập signal và đánh giá qua rule engine (`scripts/rules.py`) → có `finding_id` xuất hiện trong report findings. `[Tự động, một phần]` = signal có thật trong diagnostics nhưng chưa có rule/finding_id riêng, hoặc bị giới hạn phạm vi thu thập — cần agent tra thủ công trong `report_data.json`. `[Code-analysis]` = agent tự grep/đọc code theo SKILL.md §5.8, có gán độ tin cậy (`measured`/`estimated`/`heuristic`), KHÔNG phải collector Python. `[Gợi ý thủ công — không có collector]` = KHÔNG có signal tự động nào — chỉ là gợi ý cho operator tự kiểm tra, KHÔNG xuất hiện trong report.
+
 ---
 
-## 1. LOW CACHE HIT RATIO (Table-Level)
+## 1. LOW CACHE HIT RATIO (Database-Level)
 
-- **Detection**: `cache_hit_pct < 90` từ `pg_statio_user_tables`
+- **Detection**: [Tự động] Diagnostic block `database_stats`, field `cache_hit_ratio` (0.0–1.0, KHÔNG phải `_pct`) → finding_id `db_health.cache_hit_ratio` (red < 0.80, yellow < 0.90; `references/rules/db-health.json`). LƯU Ý: đây là cache hit ratio cấp DATABASE, không phải cấp table — không có collector nào query `pg_statio_user_tables`. Cho cache hit cấp INDEX, xem block `index_io` / finding_id `query_perf.index_cache_hit_ratio`.
 - **Priority**: P0 (< 50%) | P1 (50-80%) | P2 (80-90%)
 - **Reference**: `query-missing-indexes.md`, `query-covering-indexes.md`
 - **Category**: DB-side / Index
@@ -48,10 +50,10 @@ FROM pg_statio_user_tables WHERE relname = '{{table_name}}';
 
 ## 2. HIGH SEQUENTIAL SCAN RATIO
 
-- **Detection**: `seq_scan_pct > 50` AND `n_live_tup > 10000`
+- **Detection**: [Gợi ý thủ công — không có collector] Không có block/collector nào trong db-report-generator v4 thu thập `seq_scan`/`idx_scan` cấp table (`pg_stat_user_tables`). Đây KHÔNG phải một automated finding — dùng Fix Template bên dưới như một truy vấn thủ công khi nghi ngờ table bị seq scan nhiều (vd. khi thấy `Seq Scan` trong EXPLAIN plan của mục 4/16).
 - **Priority**: P0 (> 80% seq, > 100K rows) | P1 (> 50% seq, > 10K rows)
 - **Reference**: `query-missing-indexes.md`, `query-composite-indexes.md`
-- **Category**: DB-side / Index
+- **Category**: DB-side / Index (thủ công)
 
 **Fix Template:**
 ```sql
@@ -77,7 +79,7 @@ FROM pg_stat_user_tables WHERE relname = '{{table_name}}';
 
 ## 3. HIGH DEAD TUPLE RATIO
 
-- **Detection**: `dead_pct > 5` từ `pg_stat_user_tables`
+- **Detection**: [Tự động] Diagnostic block `dead_tuples`, field `dead_pct` → finding_id `maintenance.dead_tuples_pct` (red > 20%, yellow > 5%; `references/rules/maintenance.json`, row_identity `schema,table`). Block trả `n_live`/`n_dead` (KHÔNG phải `n_live_tup`/`n_dead_tup` như tên cột gốc `pg_stat_user_tables`).
 - **Priority**: P0 (> 50%) | P1 (20-50%) | P2 (5-20%)
 - **Reference**: `monitor-vacuum-analyze.md`
 - **Category**: DB-side / Maintenance
@@ -118,7 +120,7 @@ ALTER TABLE {{schema}}."{{table_name}}" RESET (
 
 ## 4. SLOW QUERIES (High Mean Execution Time)
 
-- **Detection**: `mean_exec_time > 100` từ `pg_stat_statements`
+- **Detection**: [Tự động] Diagnostic block `query_stats`, field `window_mean_exec_time_ms` (mean trong sampling window, KHÔNG phải `mean_exec_time` tích lũy) → finding_id `query_perf.slow_query_mean_exec_time` (red > 1000ms, yellow > 100ms; `references/rules/query-performance.json`, row_identity `queryid`). EXPLAIN plan tự động gắn kèm top-N query chậm nhất — xem mục 16. Xếp hạng bổ sung theo tổng thời gian × số lần gọi — xem mục 18.
 - **Priority**: P0 (> 5000ms) | P1 (1000-5000ms) | P2 (100-1000ms)
 - **Reference**: `monitor-explain-analyze.md`, `query-composite-indexes.md`
 - **Category**: DB-side / Query + Index
@@ -159,9 +161,9 @@ FROM pg_stat_statements WHERE queryid = {{queryid}};
 
 ## 5. UNUSED INDEXES
 
-- **Detection**: `idx_scan = 0` AND NOT `_pkey`
+- **Detection**: [Tự động, một phần — xác nhận thủ công trước khi DROP] Diagnostic block `index_io`, field `idx_scan` = 0. 2 giới hạn: (1) `index_io` chỉ thu top-30 index theo `idx_blks_read`, KHÔNG đầy đủ toàn bộ index của DB; (2) hiện KHÔNG có finding_id/rule riêng cho `idx_scan = 0` (`references/rules/query-performance.json` chỉ có `query_perf.index_cache_hit_ratio` cho block này) — nghĩa là finding này KHÔNG tự xuất hiện trong report's rule-driven findings, chỉ tra được thủ công trong `diagnostics.index_io.metrics`.
 - **Priority**: P2 (< 100MB) | P3 (> 100MB nhưng cần verify 2+ tuần)
-- **Reference**: `query-missing-indexes.md`
+- **Reference**: _Không có file KB match chính xác cho "unused index cleanup" — `query-missing-indexes.md` nói về vấn đề NGƯỢC LẠI (thiếu index). Dùng Fix Template bên dưới, không cần tài liệu bổ sung._
 - **Category**: DB-side / Cleanup
 
 **Fix Template:**
@@ -186,7 +188,7 @@ CREATE INDEX CONCURRENTLY "{{index_name}}" ON {{schema}}."{{table_name}}" ({{col
 
 ## 6. CONNECTION EXHAUSTION
 
-- **Detection**: `total_connections > 0.8 * max_connections`
+- **Detection**: [Tự động] Diagnostic block `connection_depth`. 3 finding_id riêng biệt (`references/rules/connections.json`) — KHÔNG gộp chung "total/max" như v3: `connections.cluster_pressure` (tỷ lệ `cluster_connections`/`cluster_max_connections`, red > 0.90, yellow > 0.60), `connections.pool_pressure` (tỷ lệ `db_connections`/`configured_pool_size`, red > 0.90, yellow > 0.60), `connections.idle_in_transaction` (field `longest_txn_seconds`, red > 600s, yellow > 60s).
 - **Priority**: P0 (> 90%) | P1 (80-90%)
 - **Reference**: `conn-pooling.md`, `conn-limits.md`, `conn-idle-timeout.md`
 - **Category**: Architecture / Connection Management
@@ -223,7 +225,7 @@ SELECT pg_reload_conf();
 
 ## 7. BLOCKING QUERIES
 
-- **Detection**: Rows returned từ blocking queries check
+- **Detection**: [Tự động] Diagnostic block `blocking`, field `blocked_duration_seconds` (kèm `blocked_pid`, `blocking_pid`, `blocked_query`, `blocking_query`) → finding_id `connections.blocking` (red > 30s, yellow > 5s; `references/rules/connections.json`, row_identity `blocked_pid,blocking_pid`).
 - **Priority**: P0
 - **Reference**: `lock-short-transactions.md`, `lock-deadlock-prevention.md`
 - **Category**: DB-side / Locking
@@ -254,7 +256,7 @@ SELECT pg_reload_conf();
 
 ## 8. N+1 QUERY PATTERN
 
-- **Detection**: Loop chứa DB call bên trong (code analysis)
+- **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep loop chứa DB call bên trong (không phải collector Python) — confidence tier mặc định `estimated` (cần agent tự xác nhận loop có thực sự gọi DB mỗi vòng), theo bảng độ tin cậy §5.8.
 - **Priority**: P1
 - **Reference**: `data-n-plus-one.md`
 - **Category**: Code-side / Query Pattern
@@ -299,9 +301,9 @@ var allOrders = conn.Query(
 
 ## 9. SQL INJECTION RISK
 
-- **Detection**: String concatenation trong SQL context
+- **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep string-concatenated/interpolated SQL context — confidence tier `measured` khi chuỗi text nối SQL xuất hiện rõ ràng (vd. `"SELECT * FROM " + table`), theo bảng độ tin cậy §5.8.
 - **Priority**: P0
-- **Reference**: Security best practices
+- **Reference**: `security-sql-injection.md`
 - **Category**: Code-side / Security
 
 **Fix Template (C#/.NET):**
@@ -325,7 +327,7 @@ conn.Query("SELECT * FROM Users WHERE Name = @Name", new { Name = input });
 
 ## 10. MISSING PAGINATION
 
-- **Detection**: Query trả về tất cả rows không có LIMIT
+- **Detection**: [Code-analysis — xem SKILL.md §5.8] Agent tự grep query trả về tất cả rows không có LIMIT/OFFSET/cursor — confidence tier `heuristic` (suy luận từ việc KHÔNG thấy LIMIT, không phải bằng chứng trực tiếp), theo bảng độ tin cậy §5.8.
 - **Priority**: P1 (tables > 10K rows) | P2 (tables > 1K rows)
 - **Reference**: `data-pagination.md`
 - **Category**: Code-side / Query Pattern
@@ -358,10 +360,10 @@ var page = db.Orders
 
 ## 11. LARGE TABLE WITHOUT PARTITIONING
 
-- **Detection**: `n_live_tup > 10,000,000` với time-series column
+- **Detection**: [Gợi ý thủ công — không có collector] Không có block nào kiểm tra partitioning trong db-report-generator v4. Diagnostic block `table_index_size`, field `row_estimate` (từ `pg_class.reltuples`) có thể dùng làm input thủ công để tìm bảng lớn — nhưng KHÔNG có rule/finding_id nào đánh giá `row_estimate`, và việc xác định "time-series column" đòi hỏi agent tự đọc schema thủ công.
 - **Priority**: P2
 - **Reference**: `schema-partitioning.md`
-- **Category**: Architecture / Schema
+- **Category**: Architecture / Schema (thủ công)
 
 **Fix Template:**
 ```sql
@@ -394,7 +396,7 @@ ALTER TABLE {{table_name}}_partitioned RENAME TO "{{table_name}}";
 
 ## 12. MISSING FOREIGN KEY INDEXES
 
-- **Detection**: FK constraint exists nhưng không có index trên FK column
+- **Detection**: [Tự động] Diagnostic block `fk_missing_index`, fields `schema`, `table`, `constraint`, `columns`, `suggested_ddl` → finding_id `maintenance.fk_missing_index` (presence rule, assessment cố định `red`; `references/rules/maintenance.json`, row_identity `schema,table,constraint`).
 - **Priority**: P1
 - **Reference**: `schema-foreign-key-indexes.md`
 - **Category**: DB-side / Index
@@ -425,10 +427,10 @@ WHERE c.contype = 'f'
 
 ## 13. SUBOPTIMAL SERVER CONFIGURATION
 
-- **Detection**: Config khác biệt lớn so với recommendations
+- **Detection**: [Gợi ý thủ công — không có collector] Không có block nào query `pg_settings` trong db-report-generator v4. Dùng Verify query bên dưới như một truy vấn thủ công.
 - **Priority**: P1 (shared_buffers < 15% RAM) | P2 (work_mem < 4MB)
 - **Reference**: `conn-limits.md`
-- **Category**: DB-side / Configuration
+- **Category**: DB-side / Configuration (thủ công)
 
 **Fix Template (ví dụ server 16GB RAM):**
 ```sql
