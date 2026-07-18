@@ -61,3 +61,23 @@ def test_skill_md_generate_fix_sql_uses_recovery_or_rollback(skill_dir):
 def test_skill_md_references_remediation_policy(skill_dir):
     text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
     assert "references/remediation-policy.md" in text
+
+
+def test_solutions_template_has_dangerous_section_excluded_from_scripts(skill_dir):
+    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    assert "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" in text
+    assert "dangerous_solutions" in text
+    assert "Đã loại trừ mọi fix remediation_class=dangerous" in text
+
+
+def test_solutions_template_uses_recovery_or_rollback(skill_dir):
+    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    assert "{{recovery_or_rollback_sql}}" in text
+    assert "{{rollback_sql}}" not in text
+    assert "**Hoàn tác" not in text
+
+
+def test_solutions_template_footer_version_v4(skill_dir):
+    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    assert "db-report-generator v4" in text
+    assert "v3.0.0" not in text

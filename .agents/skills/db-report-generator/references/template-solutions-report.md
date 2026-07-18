@@ -59,9 +59,9 @@
 {{verify_sql}}
 ```
 
-**Hoàn tác (nếu cần revert):**
+**recovery_or_rollback (nếu cần revert):**
 ```sql
-{{rollback_sql}}
+{{recovery_or_rollback_sql}}
 ```
 
 ---
@@ -144,12 +144,14 @@
 
 > **CẢNH BÁO**: Review kỹ trước khi chạy. Luôn test trên staging trước.
 > Scripts sắp xếp theo độ ưu tiên. Chạy P0 trước.
+> Các fix có `remediation_class: dangerous` KHÔNG BAO GIỜ xuất hiện trong các script dưới đây — xem mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" bên dưới.
 
 ### Script 1: Sửa Lỗi P0 Nghiêm Trọng
 ```sql
 -- ================================================
 -- SỬA LỖI P0 NGHIÊM TRỌNG - {{report_date}}
 -- Database: {{CatalogName}}
+-- (Đã loại trừ mọi fix remediation_class=dangerous)
 -- ================================================
 
 {{#each p0_scripts}}
@@ -164,6 +166,7 @@
 ```sql
 -- ================================================
 -- SỬA LỖI P1 ƯU TIÊN CAO - {{report_date}}
+-- (Đã loại trừ mọi fix remediation_class=dangerous)
 -- ================================================
 
 {{#each p1_scripts}}
@@ -178,6 +181,7 @@
 ```sql
 -- ================================================
 -- SỬA LỖI P2 TRUNG BÌNH - {{report_date}}
+-- (Đã loại trừ mọi fix remediation_class=dangerous)
 -- ================================================
 
 {{#each p2_scripts}}
@@ -186,6 +190,29 @@
 
 {{/each}}
 ```
+
+### GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)
+
+> Các fix dưới đây thuộc tier `dangerous` (DROP INDEX, pg_terminate_backend, partition migration, ALTER SYSTEM, ...). KHÔNG được đưa vào script chạy-liền ở trên — mỗi fix cần được đọc, hiểu rủi ro, và chạy thủ công từng câu lệnh một sau khi review.
+
+{{#each dangerous_solutions}}
+#### {{description}}
+
+**Lý do dangerous**: {{danger_reason}}
+
+```sql
+{{fix_sql}}
+```
+
+**recovery_or_rollback:**
+```sql
+{{recovery_or_rollback_sql}}
+```
+
+{{/each}}
+{{#if no_dangerous}}
+_Không có phát hiện nào thuộc tier `dangerous` trong lần phân tích này._
+{{/if}}
 
 ---
 
@@ -285,5 +312,5 @@ Sử dụng checklist này để theo dõi tiến trình triển khai:
 
 ---
 
-*Báo cáo được tạo tự động bởi db-report-generator v3.0.0 kết hợp supabase-postgres-best-practices*
+*Báo cáo được tạo tự động bởi db-report-generator v4.0.0 kết hợp supabase-postgres-best-practices*
 *Thời gian tạo: {{generated_at}}*
