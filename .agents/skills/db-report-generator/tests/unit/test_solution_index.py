@@ -252,3 +252,9 @@ def test_pattern_13_no_hardcoded_multiplier_and_gated(skill_dir):
     end = text.index("## 14. RLS POLICY RE-EVALUATION")
     block = text[start:end]
     assert "2-5x" not in block
+
+
+def test_no_leftover_rollback_heading_anywhere_in_file(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    assert "**Rollback:**" not in text
+    assert "{{rollback_sql}}" not in text

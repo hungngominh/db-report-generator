@@ -108,7 +108,7 @@ SELECT relname, n_dead_tup, n_live_tup,
 FROM pg_stat_user_tables WHERE relname = '{{table_name}}';
 ```
 
-**Rollback:**
+**recovery_or_rollback:**
 ```sql
 ALTER TABLE {{schema}}."{{table_name}}" RESET (
   autovacuum_vacuum_scale_factor,
