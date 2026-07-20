@@ -66,6 +66,7 @@ Sua cac thong tin:
 - `Port`: Port PostgreSQL (mac dinh 5432)
 - `CodePath`: Duong dan toi source code du an (de phan tich code, tuy chon)
 - `ProjectName`: Ten du an
+- `CodeLanguage` / `Framework`: tuy chon (auto-detect neu bo trong), dung boi agent o Buoc 5 (code-analysis) khi chay qua Claude Code CLI — vi du `csharp`/`dotnet`, `python`/`django`
 - `SamplingWindowSeconds` / `ExplainMode` / `ExplainTopN` / `ExplainAnalyzeTopN` / `ExplainStatementTimeoutMs` / `ExplainLockTimeoutMs`: tuy chon, xem `.agents/skills/db-report-generator/MIGRATION.md` de biet gia tri mac dinh va y nghia
 
 ### Buoc 4: Chay thu
@@ -74,7 +75,7 @@ Sua cac thong tin:
 ```bash
 set PYTHONIOENCODING=utf-8
 cd .agents/skills/db-report-generator
-python -m scripts.run_report E:\Skills\YourProject\.env E:\Skills\YourProject\2026-07-20
+python -m scripts.run_report E:\Skills\YourProject\.env E:\Skills\YourProject\yyyy-MM-dd
 ```
 
 **Cach 2 - Qua Claude Code CLI (tao ca CODE_ANALYSIS_REPORT.md/COMBINED_REPORT.md/PERFORMANCE_SOLUTIONS.md theo SKILL.md):**
@@ -89,7 +90,7 @@ Bao cao duoc tao trong thu muc du an theo ngay:
 ```
 YourProject/
 ├── .env
-└── 2026-07-20/
+└── yyyy-MM-dd/
     ├── report_data.json             # Nguon su that duy nhat (schema-valid)
     ├── DB_STATUS_REPORT.md          # Sinh tu dong boi scripts/render.py
     ├── FINDINGS.md                  # Sinh tu dong boi scripts/render.py
