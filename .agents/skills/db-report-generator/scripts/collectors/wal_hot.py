@@ -29,7 +29,8 @@ def collect(conn, caps):
             wal_records, wal_fpi, wal_bytes, wal_buffers_full, stats_reset = row
             metrics.append({
                 "level": "wal", "wal_records": wal_records, "wal_fpi": wal_fpi,
-                "wal_bytes": wal_bytes, "wal_buffers_full": wal_buffers_full,
+                "wal_bytes": int(wal_bytes) if wal_bytes is not None else None,
+                "wal_buffers_full": wal_buffers_full,
                 "stats_reset": stats_reset.isoformat() if stats_reset else None,
             })
 
