@@ -128,3 +128,15 @@ def test_skill_md_report_templates_section_points_to_assets(skill_dir):
     assert "assets/templates/template-combined-report.md" in section
     assert "assets/templates/template-solutions-report.md" in section
     assert "references/template-db-report.md" not in section
+
+
+def test_migration_md_exists_and_covers_v3_to_v4(skill_dir):
+    p = skill_dir / "MIGRATION.md"
+    assert p.exists()
+    text = p.read_text(encoding="utf-8")
+    for marker in (
+        "0-100", "assets/templates", "template-db-report.md",
+        "recovery_or_rollback", "EXPLAIN", "RLS",
+        "scripts/run_report.py", "report_data.json",
+    ):
+        assert marker in text, f"MIGRATION.md missing coverage of: {marker}"
