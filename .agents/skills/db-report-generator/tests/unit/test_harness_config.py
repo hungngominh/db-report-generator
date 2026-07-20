@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = ROOT.parent.parent.parent
 
 
 def test_compose_lists_pg_14_to_18():
@@ -13,7 +14,7 @@ def test_compose_lists_pg_14_to_18():
 
 
 def test_ci_workflow_parses_and_has_matrix():
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
     assert "jobs" in wf
     pg = wf["jobs"]["test"]["strategy"]["matrix"]["pg"]
     assert sorted(str(x) for x in pg) == ["14", "15", "16", "17", "18"]

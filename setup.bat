@@ -20,13 +20,13 @@ echo [OK] Python da cai dat
 :: Install dependencies
 echo.
 echo Dang cai dat Python packages...
-pip install psycopg2-binary requests >nul 2>&1
+pip install -r "%~dp0.agents\skills\db-report-generator\requirements.txt" >nul 2>&1
 if errorlevel 1 (
-    echo [LOI] Khong the cai dat packages. Thu chay: pip install psycopg2-binary requests
+    echo [LOI] Khong the cai dat packages. Thu chay: pip install -r .agents\skills\db-report-generator\requirements.txt
     pause
     exit /b 1
 )
-echo [OK] psycopg2-binary va requests da cai dat
+echo [OK] psycopg2-binary, pglast, jsonschema da cai dat
 
 :: Get target workspace
 echo.
@@ -42,21 +42,11 @@ echo.
 echo Dang copy files vao %WORKSPACE%...
 
 :: Create directories
-if not exist "%WORKSPACE%\.claude\skills\db-report-generator\references" mkdir "%WORKSPACE%\.claude\skills\db-report-generator\references"
 if not exist "%WORKSPACE%\.agents\skills\db-report-generator\references" mkdir "%WORKSPACE%\.agents\skills\db-report-generator\references"
-if not exist "%WORKSPACE%\.scripts" mkdir "%WORKSPACE%\.scripts"
 
-:: Copy claude skills
-xcopy /s /y /q "%~dp0.claude\skills\db-report-generator\*" "%WORKSPACE%\.claude\skills\db-report-generator\" >nul
-echo [OK] Claude skill files
-
-:: Copy agent skills
+:: Copy agent skill (SKILL.md, CLAUDE.md, MIGRATION.md, scripts/, references/, assets/templates/)
 xcopy /s /y /q "%~dp0.agents\skills\db-report-generator\*" "%WORKSPACE%\.agents\skills\db-report-generator\" >nul
-echo [OK] Agent skill instructions (bao gom KB tai references\kb\)
-
-:: Copy scripts
-xcopy /s /y /q "%~dp0.scripts\*" "%WORKSPACE%\.scripts\" >nul
-echo [OK] Helper scripts
+echo [OK] Agent skill (scripts + references + assets/templates, bao gom KB tai references\kb\)
 
 echo.
 echo ============================================
@@ -68,11 +58,11 @@ echo   1. Tao file .env trong thu muc du an
 echo      (Xem mau tai: %~dp0sample-project\.env.sample)
 echo.
 echo   2. Chay bao cao:
-echo      cd %WORKSPACE%\.claude\skills\db-report-generator
+echo      cd %WORKSPACE%\.agents\skills\db-report-generator
 echo      set PYTHONIOENCODING=utf-8
-echo      python analyzer.py [duong-dan-toi-.env]
+echo      python -m scripts.run_report [duong-dan-toi-.env] [thu-muc-ket-qua]
 echo.
-echo   3. Hoac dung Claude Code:
+echo   3. Hoac dung Claude Code (tao ca Code/Combined/Solutions report):
 echo      /db-report-generator
 echo.
 pause

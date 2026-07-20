@@ -2,37 +2,33 @@
 
 ## Yeu cau he thong
 
-- **Python 3.8+** (co pip)
-- **Claude Code CLI** (de chay skill qua `/db-report-generator`)
+- **Python 3.11+** (co pip)
 - **PostgreSQL** (database can phan tich)
+- **Docker** (tuy chon — chi can neu ban muon chay bo test tich hop cua skill)
 - **Windows 10/11** (da test) hoac Linux/macOS
 
 ## Cau truc thu muc
 
 ```
 db-report-portable/
-├── README.md                 # File nay
-├── setup.bat                 # Script cai dat tu dong (Windows)
-├── .claude/skills/db-report-generator/   # Python runtime
-│   ├── analyzer.py           # Core analyzer (ket noi DB + phan tich)
-│   ├── run_skill.py          # Entry point - auto-scan workspace
-│   ├── SKILL.md              # Dac ta skill day du
-│   ├── skill_instructions.md # Huong dan cho Claude
-│   ├── CLAUDE.md             # Quy tac cho agent
-│   └── references/           # SQL templates + report templates
-├── .agents/skills/
-│   └── db-report-generator/  # Huong dan + templates cho agent (self-contained)
-│       ├── SKILL.md
-│       ├── CLAUDE.md
-│       └── references/       # SQL queries + report templates
-│           └── kb/           # Knowledge base: 31 bai PostgreSQL (nguon: supabase-postgres-best-practices)
-├── .scripts/                 # Script ho tro
-│   ├── generate_db_report.py # Script tao bao cao
-│   ├── daily_report_automation.py  # Tu dong hang ngay
-│   ├── run_daily_report.bat  # Bat file chay hang ngay
-│   └── setup_task_scheduler.ps1    # Cai dat Task Scheduler
+├── README.md                        # File nay
+├── setup.bat                        # Script cai dat tu dong (Windows)
+├── .agents/skills/db-report-generator/   # Skill: pipeline Python + huong dan cho agent
+│   ├── SKILL.md                     # Dac ta skill day du (Buoc 1-9)
+│   ├── CLAUDE.md                    # Quy uoc dinh dang / sanitize() cho agent
+│   ├── MIGRATION.md                 # Huong dan nang cap v3 -> v4
+│   ├── requirements.txt             # Dependency runtime (psycopg2-binary, pglast, jsonschema)
+│   ├── requirements-dev.txt         # requirements.txt + pytest/pyyaml (de chay bo test)
+│   ├── scripts/
+│   │   ├── run_report.py            # CLI: .env -> report_data.json + DB_STATUS_REPORT.md + FINDINGS.md
+│   │   ├── analyzer.py              # Ket noi + thu thap + danh gia (thu vien, khong co __main__)
+│   │   ├── render.py                # report_data.json -> Markdown (tat dinh, khong template)
+│   │   ├── collectors/              # Moi collector 1 file (cache hit, dead tuples, RLS, v.v.)
+│   │   └── lib/                     # db.py, envparse.py, schema.py, safety.py, v.v.
+│   ├── references/                  # rules/*.json, kb/ (Solution Engine KB), SQL tham khao
+│   └── assets/templates/            # Template cho 3 bao cao van de agent tu viet (Code/Combined/Solutions)
 └── sample-project/
-    └── .env.sample           # Mau file cau hinh
+    └── .env.sample                  # Mau file cau hinh
 ```
 
 ## Huong dan cai dat
@@ -43,9 +39,7 @@ Giai nen (hoac copy) toan bo thu muc nay vao noi ban muon lam workspace. Vi du:
 
 ```
 E:\Skills\          <-- workspace root
-├── .claude\skills\db-report-generator\
 ├── .agents\skills\db-report-generator\   <-- da bao gom KB tai references\kb\
-├── .scripts\
 └── YourProject\    <-- thu muc du an cua ban
     └── .env        <-- file cau hinh DB
 ```
@@ -53,7 +47,8 @@ E:\Skills\          <-- workspace root
 ### Buoc 2: Cai Python packages
 
 ```bash
-pip install psycopg2-binary requests
+cd .agents/skills/db-report-generator
+pip install -r requirements.txt
 ```
 
 ### Buoc 3: Tao file .env cho du an
@@ -69,39 +64,22 @@ Sua cac thong tin:
 - `CatalogName`: Ten database
 - `Username` / `Password`: Tai khoan database (nen dung readonly)
 - `Port`: Port PostgreSQL (mac dinh 5432)
-- `CodePath`: Duong dan toi source code du an (de phan tich code)
+- `CodePath`: Duong dan toi source code du an (de phan tich code, tuy chon)
 - `ProjectName`: Ten du an
-- `CodeLanguage`: Ngon ngu code (csharp, python, java, typescript...)
-- `Framework`: Framework (dotnet, django, spring, nextjs...)
-- `IISBaseURL`: URL web server xem bao cao (tuy chon)
-- `GoogleChatWebhook`: Webhook URL gui thong bao (tuy chon)
+- `SamplingWindowSeconds` / `ExplainMode` / `ExplainTopN` / `ExplainAnalyzeTopN` / `ExplainStatementTimeoutMs` / `ExplainLockTimeoutMs`: tuy chon, xem `.agents/skills/db-report-generator/MIGRATION.md` de biet gia tri mac dinh va y nghia
 
 ### Buoc 4: Chay thu
 
-**Cach 1 - Qua Python truc tiep:**
+**Cach 1 - Qua Python truc tiep (chi tao DB_STATUS_REPORT.md/FINDINGS.md):**
 ```bash
 set PYTHONIOENCODING=utf-8
-cd .claude/skills/db-report-generator
-python analyzer.py E:\Skills\YourProject\.env
+cd .agents/skills/db-report-generator
+python -m scripts.run_report E:\Skills\YourProject\.env E:\Skills\YourProject\2026-07-20
 ```
 
-**Cach 2 - Auto-scan workspace:**
-```bash
-set PYTHONIOENCODING=utf-8
-cd .claude/skills/db-report-generator
-python run_skill.py
-```
-
-**Cach 3 - Qua Claude Code CLI:**
+**Cach 2 - Qua Claude Code CLI (tao ca CODE_ANALYSIS_REPORT.md/COMBINED_REPORT.md/PERFORMANCE_SOLUTIONS.md theo SKILL.md):**
 ```bash
 /db-report-generator
-```
-
-### Buoc 5 (Tuy chon): Cai dat chay tu dong hang ngay
-
-Chay PowerShell voi quyen Admin:
-```powershell
-powershell -ExecutionPolicy Bypass -File .scripts/setup_task_scheduler.ps1
 ```
 
 ## Ket qua sau khi chay
@@ -111,20 +89,20 @@ Bao cao duoc tao trong thu muc du an theo ngay:
 ```
 YourProject/
 ├── .env
-├── 2026-02-12/
-│   ├── DB_STATUS_REPORT.md          # Bao cao tinh trang database
-│   ├── CODE_ANALYSIS_REPORT.md      # Phan tich code
-│   ├── COMBINED_REPORT.md           # Bao cao tong hop
-│   ├── PERFORMANCE_SOLUTIONS.md     # Giai phap cu the
-│   └── web.config                   # Cho IIS (neu co)
-├── reports.json                     # Danh sach ngay co bao cao
-├── index.html                       # Dashboard web (neu co IISBaseURL)
-└── viewer.html                      # Xem bao cao web (neu co IISBaseURL)
+└── 2026-07-20/
+    ├── report_data.json             # Nguon su that duy nhat (schema-valid)
+    ├── DB_STATUS_REPORT.md          # Sinh tu dong boi scripts/render.py
+    ├── FINDINGS.md                  # Sinh tu dong boi scripts/render.py
+    ├── report_summary.json          # Sinh tu dong boi scripts/render.py
+    ├── CODE_ANALYSIS_REPORT.md      # Agent tu viet (neu co CodePath), qua Claude Code
+    ├── COMBINED_REPORT.md           # Agent tu viet, qua Claude Code
+    └── PERFORMANCE_SOLUTIONS.md     # Agent tu viet, qua Claude Code
 ```
 
 ## Luu y
 
 - **PYTHONIOENCODING=utf-8**: Bat buoc tren Windows de hien thi tieng Viet dung
 - **readonly_user**: Nen tao tai khoan chi doc (SELECT) de an toan
-- **pg_stat_statements**: Extension nay nen duoc cai tren PostgreSQL server de co thong tin slow queries
+- **pg_stat_statements**: Extension nay nen duoc cai tren PostgreSQL server de co thong tin slow queries — neu chua co, `query_workload` se bao `status: "skipped"` trong `report_data.json` thay vi loi
 - **Firewall**: Dam bao may chay skill ket noi duoc toi PostgreSQL server (port 5432)
+- **Nang cap tu ban v3 cu hon?** Xem `.agents/skills/db-report-generator/MIGRATION.md`
