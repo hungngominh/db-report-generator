@@ -81,3 +81,24 @@ def test_solutions_template_footer_version_v4(skill_dir):
     text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
     assert "db-report-generator v4" in text
     assert "v3.0.0" not in text
+
+
+def test_skill_md_step3_invokes_python_pipeline_not_raw_sql(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "python -m scripts.run_report" in text
+    assert "#### 3.4 Top 20 Slow Queries" not in text
+    assert "FROM pg_stat_user_tables" not in text
+
+
+def test_skill_md_keeps_sanitize_and_details_convention(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "def sanitize(value):" in text
+    assert "KHÔNG BAO GIỜ đặt query text" in text
+
+
+def test_skill_md_error_handling_delegates_to_analyzer(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    idx = text.index("## Xử Lý Lỗi")
+    section = text[idx:idx + 800]
+    assert "analyzer.py" in section
+    assert "ghi log lỗi, tạo báo cáo rỗng với thông tin lỗi" not in section

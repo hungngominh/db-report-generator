@@ -115,167 +115,39 @@ File `.env` trong mỗi thư mục dự án chứa JSON với cấu trúc:
 2. Tạo thư mục con `yyyy-MM-dd` trong mỗi thư mục database
 3. Nếu thư mục đã tồn tại, hỏi user có muốn ghi đè báo cáo cũ không
 
-### Bước 3: Kết Nối Và Thu Thập Dữ Liệu
+### Bước 3: Thu Thập Dữ Liệu (Python Pipeline)
 
-Với mỗi database, sử dụng Python script với `psycopg2` để chạy các query sau:
+**KHÔNG tự viết SQL hay script kết nối DB thủ công.** Toàn bộ việc kết nối, thu thập, và đánh giá đã được đóng gói tất định trong `scripts/` (analyzer → collectors → rules → render) — xem `scripts/analyzer.py::_analyze_target` để biết danh sách đầy đủ diagnostic block nếu cần tra cứu. Với mỗi database:
 
-#### 3.1 Tổng Quan Database
-```sql
--- Database size
-SELECT pg_database.datname, pg_size_pretty(pg_database_size(pg_database.datname)) as size
-FROM pg_database WHERE datname = current_database();
+1. Chạy:
+   ```bash
+   set PYTHONIOENCODING=utf-8
+   cd {workspace}\.agents\skills\db-report-generator
+   python -m scripts.run_report "{path-to-project}\.env" "{path-to-project}\{yyyy-MM-dd}"
+   ```
+2. Lệnh trên (`scripts/run_report.py`) tự thực hiện toàn bộ — agent không cần viết code cho bước này:
+   - Kết nối read-only + timeout (`scripts/lib/db.py`), thăm dò capability (`scripts/capabilities.py`: vendor, managed, superuser, server_version_num)
+   - Chạy tất cả collector đã đăng ký trong `scripts/collectors/__init__.py::COLLECTORS` (cache hit, table/index size, dead tuples, missing FK index, duplicate/bloated index, slow queries qua `pg_stat_statements` với tự-detect schema/version, blocking, replication, wraparound, wait events, `pg_stat_database`, RLS policy, schema hygiene) cộng `scripts/explain.py` (EXPLAIN plan top-N slow query, an toàn theo `ExplainMode`) và `scripts/index_advisor.py` (gợi ý index cấp cột)
+   - Đánh giá mọi finding theo `references/rules/*.json` (`scripts/rules.py`) — 5 trục: `db-health`, `query-performance`, `maintenance`, `connections`, `security-rls`
+   - Ghi `report_data.json` (nguồn sự thật duy nhất, schema `references/report-data.schema.json`), `DB_STATUS_REPORT.md`, `FINDINGS.md`, `report_summary.json` vào thư mục ngày
+3. Nếu database này lỗi (không kết nối được, timeout, thiếu quyền...), `analyzer.py` đã tự cô lập lỗi đó vào riêng database này (`target.collection_status = "error"` + `target.error`) — **không** làm hỏng báo cáo của database khác trong cùng lần chạy, và **không** làm dừng vòng lặp qua các dự án còn lại (Bước 9). Đọc trường `error` trong `report_data.json` nếu cần biết lý do.
+4. `report_data.json` là nguồn duy nhất cho Bước 5–8 sau đây — **không** tự tính lại cache hit ratio, dead tuple %, seq scan % v.v. bằng tay; đọc thẳng từ `diagnostics.<block>.findings[].assessment` / `.metrics`.
 
--- Uptime
-SELECT now() - pg_postmaster_start_time() AS uptime;
+### Bước 4: Báo Cáo Database Đã Được Tạo Tự Động
 
--- Active connections
-SELECT count(*) as active_connections FROM pg_stat_activity
-WHERE datname = current_database() AND state = 'active';
+`DB_STATUS_REPORT.md` và `FINDINGS.md` đã được `scripts/render.py` tạo xong ở Bước 3 — **đừng** tạo lại bằng tay hay dùng template Handlebars nào cho phần DB. Đọc 2 file này để lấy issue list cho Bước 6 (Combined Report) và Bước 8 (Solutions).
 
--- Total connections
-SELECT count(*) as total_connections FROM pg_stat_activity
-WHERE datname = current_database();
-```
+**Quy ước đánh giá** (áp dụng tự động bởi `scripts/rules.py`, không cần tính tay):
+- 🟢 green / 🟡 yellow / 🔴 red / ⚪ unknown (dữ liệu không đủ tin cậy để đánh giá, §0.B3 — không được tự nâng cấp lên green/yellow/red) / ➖ not_applicable
+- Ngưỡng chi tiết từng finding: xem `references/rules/*.json` (không hardcode ngưỡng trong báo cáo)
 
-#### 3.2 Cache Hit Ratio (Tổng Thể)
-```sql
-SELECT
-  sum(heap_blks_read) as heap_read,
-  sum(heap_blks_hit) as heap_hit,
-  CASE WHEN sum(heap_blks_hit) + sum(heap_blks_read) > 0
-    THEN round(sum(heap_blks_hit)::numeric / (sum(heap_blks_hit) + sum(heap_blks_read)) * 100, 2)
-    ELSE 0
-  END as cache_hit_ratio
-FROM pg_statio_user_tables;
-```
+### Quy Ước Định Dạng Chung — Bắt Buộc Cho Báo Cáo Agent Tự Viết (Bước 5, 6, 8)
 
-#### 3.3 Cache Hit Ratio Theo Bảng (Top 20)
-```sql
-SELECT
-  schemaname, relname,
-  heap_blks_read as disk_reads,
-  heap_blks_hit as cache_hits,
-  CASE WHEN heap_blks_hit + heap_blks_read > 0
-    THEN round(heap_blks_hit::numeric / (heap_blks_hit + heap_blks_read) * 100, 2)
-    ELSE 0
-  END as cache_hit_pct
-FROM pg_statio_user_tables
-WHERE heap_blks_hit + heap_blks_read > 0
-ORDER BY heap_blks_read DESC
-LIMIT 20;
-```
-
-#### 3.4 Top 20 Slow Queries (cần pg_stat_statements)
-
-**QUAN TRỌNG - Detect Schema Trước Khi Query:**
-
-Extension `pg_stat_statements` có thể nằm ở schema khác (`extensions`, `public`, `pg_catalog`, ...) mà `search_path` của user kết nối không bao gồm. Phải detect trước:
-
-**Bước 3.4a: Kiểm tra extension đã cài và tìm schema:**
-```sql
-SELECT
-  e.extname,
-  n.nspname AS ext_schema,
-  e.extversion
-FROM pg_extension e
-JOIN pg_namespace n ON n.oid = e.extnamespace
-WHERE e.extname = 'pg_stat_statements';
-```
-
-Kết quả sẽ trả về `ext_schema` (ví dụ: `extensions`, `public`, `pg_catalog`).
-
-**Bước 3.4b: Nếu extension TỒN TẠI, thêm schema vào search_path TRƯỚC KHI query:**
-```sql
--- Giả sử ext_schema = 'extensions' (thay bằng giá trị thực từ 3.4a)
-SET search_path TO extensions, public, dbo;
-```
-
-Hoặc dùng schema-qualified name trực tiếp:
-```sql
--- Thay {{ext_schema}} bằng giá trị từ bước 3.4a
-SELECT
-  queryid,
-  regexp_replace(LEFT(query, 200), E'[\\n\\r\\t]+', ' ', 'g') as query_preview,
-  calls,
-  round(total_exec_time::numeric, 2) as total_time_ms,
-  round(mean_exec_time::numeric, 2) as avg_time_ms,
-  round(max_exec_time::numeric, 2) as max_time_ms,
-  rows
-FROM {{ext_schema}}.pg_stat_statements
-WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-ORDER BY mean_exec_time DESC
-LIMIT 20;
-```
-
-**Bước 3.4c: Xử lý PostgreSQL version khác nhau:**
-
-| PostgreSQL Version | Cột thời gian | Cách xử lý |
-|-------------------|---------------|-------------|
-| >= 13 | `total_exec_time`, `mean_exec_time`, `max_exec_time` | Dùng trực tiếp |
-| < 13 | `total_time`, `mean_time`, `max_time` | Thay tên cột |
-
-Detect version:
-```sql
-SELECT current_setting('server_version_num')::int AS version_num;
--- >= 130000 = PostgreSQL 13+
-```
-
-**Bước 3.4d: Nếu extension KHÔNG TỒN TẠI (query 3.4a trả về 0 dòng):**
-- Ghi trong báo cáo: "Extension pg_stat_statements chưa được cài đặt"
-- Bỏ qua phần slow queries
-- Thêm vào khuyến nghị: cài extension
-
-**Tóm tắt logic trong Python:**
-```python
-# 1. Detect extension schema
-cursor.execute("""
-    SELECT n.nspname AS ext_schema
-    FROM pg_extension e
-    JOIN pg_namespace n ON n.oid = e.extnamespace
-    WHERE e.extname = 'pg_stat_statements'
-""")
-row = cursor.fetchone()
-
-if row:
-    ext_schema = row[0]
-    # 2. Detect PG version
-    cursor.execute("SELECT current_setting('server_version_num')::int")
-    pg_version = cursor.fetchone()[0]
-
-    if pg_version >= 130000:
-        time_col = "total_exec_time"
-        mean_col = "mean_exec_time"
-        max_col = "max_exec_time"
-    else:
-        time_col = "total_time"
-        mean_col = "mean_time"
-        max_col = "max_time"
-
-    # 3. Query with schema-qualified name
-    query = f"""
-        SELECT queryid,
-          regexp_replace(LEFT(query, 200), E'[\\n\\r\\t]+', ' ', 'g') as query_preview,
-          calls,
-          round({time_col}::numeric, 2) as total_time_ms,
-          round({mean_col}::numeric, 2) as avg_time_ms,
-          round({max_col}::numeric, 2) as max_time_ms,
-          rows
-        FROM {ext_schema}.pg_stat_statements
-        WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-        ORDER BY {mean_col} DESC
-        LIMIT 20
-    """
-    cursor.execute(query)
-    slow_queries = cursor.fetchall()
-else:
-    slow_queries = None  # Extension chưa cài
-```
-
-### ⛔ BẮT BUỘC - Sanitize + Format Tương Tác
+`DB_STATUS_REPORT.md`/`FINDINGS.md` ở Bước 3–4 do Python sinh ra, không cần convention này. Nhưng `CODE_ANALYSIS_REPORT.md` (Bước 5), `COMBINED_REPORT.md` (Bước 6), và `PERFORMANCE_SOLUTIONS.md` (Bước 8) vẫn do agent tự viết Markdown — áp dụng đúng 2 quy tắc sau cho các file đó:
 
 #### A. Hàm `sanitize()` bắt buộc
 
-Script Python **BẮT BUỘC** phải có hàm này ở đầu file và dùng cho MỌI cell trong markdown table:
+Nếu agent dùng Python để build các file này, **BẮT BUỘC** có hàm này ở đầu file và dùng cho MỌI cell trong markdown table:
 
 ```python
 import re
@@ -291,250 +163,30 @@ def sanitize(value):
     return s.strip()
 ```
 
-#### B. Query text dùng `<details>` — KHÔNG nhét vào table cell
+#### B. Query/code text dùng `<details>` — KHÔNG nhét vào table cell
 
-**KHÔNG BAO GIỜ đặt query text vào cell trong markdown table.** Query text chứa newlines, tab, ký tự đặc biệt — luôn phá vỡ bảng dù đã sanitize.
+**KHÔNG BAO GIỜ đặt query text hoặc code snippet vào cell trong markdown table.** Text nhiều dòng luôn phá vỡ bảng dù đã sanitize.
 
-**Cách đúng:** Bảng chỉ chứa SỐ LIỆU. Query text nằm trong `<details>` bên dưới bảng.
+**Cách đúng:** Bảng chỉ chứa SỐ LIỆU. Query/code text nằm trong `<details>` bên dưới bảng:
 
 ```markdown
 <!-- Bảng chỉ có số liệu, KHÔNG có query text -->
-| # | Mã Truy Vấn | Số Lần Gọi | TB (ms) | Cao Nhất (ms) | Tổng (ms) | Số Dòng |
-|---|-------------|------------|---------|--------------|-----------|---------|
-| 1 | 4005459... | 4 | 9640.76 | 10161.15 | 38563.05 | 14,475,817 |
-| 2 | -441070... | 4 | 2386.51 | 2702.12 | 9546.02 | 1,917,912 |
+| # | Mã Truy Vấn | Số Lần Gọi | TB (ms) |
+|---|-------------|------------|---------|
+| 1 | 4005459... | 4 | 9640.76 |
 
 <!-- Query text trong details expandable — bấm để mở -->
 <details>
-<summary>🔍 #1 — TB: 9640.76ms — 4 lần gọi — 14,475,817 dòng</summary>
+<summary>🔍 #1 — TB: 9640.76ms — 4 lần gọi</summary>
 
 \`\`\`sql
-SELECT r."Id", r."ID_GUID", r."IsDeleted"...
-\`\`\`
-
-</details>
-
-<details>
-<summary>🔍 #2 — TB: 2386.51ms — 4 lần gọi — 1,917,912 dòng</summary>
-
-\`\`\`sql
-SELECT s."Id", s."FromDate", s."IsBusy"...
+SELECT ...
 \`\`\`
 
 </details>
 ```
 
-**Python code mẫu:**
-```python
-def extract_table_name(query_text):
-    """Trích tên bảng chính từ query text.
-    Tìm FROM/INTO/UPDATE/JOIN + tên bảng."""
-    if not query_text:
-        return "N/A"
-    import re
-    # Tìm pattern: FROM/JOIN/UPDATE/INTO + schema."TableName" hoặc schema.tablename
-    patterns = [
-        r'(?:FROM|JOIN|UPDATE|INTO)\s+(?:(?:(\w+)\.)?"?(\w+)"?)',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, query_text, re.IGNORECASE)
-        if match:
-            schema = match.group(1) or ''
-            table = match.group(2) or ''
-            if table.lower() not in ('select', 'where', 'set', 'values', 'pg_stat_statements'):
-                return f'{schema}.{table}' if schema else table
-    return "N/A"
-
-# 1. Ghi bảng số liệu (không có query text, không có tên table)
-lines = []
-lines.append("| # | Mã Truy Vấn | Số Lần Gọi | TB (ms) | Cao Nhất (ms) | Tổng (ms) | Số Dòng |")
-lines.append("|---|-------------|------------|---------|--------------|-----------|---------|")
-for idx, row in enumerate(slow_queries, 1):
-    lines.append(f"| {idx} | {sanitize(row['queryid'])} | {sanitize(row['calls'])} | {sanitize(row['avg_time_ms'])} | {sanitize(row['max_time_ms'])} | {sanitize(row['total_time_ms'])} | {sanitize(row['rows'])} |")
-
-lines.append("")
-
-# 2. Ghi details expandable với tên table trong summary
-for idx, row in enumerate(slow_queries, 1):
-    query_text = row['query_preview'] or ''
-    table_name = extract_table_name(query_text)
-    lines.append(f'<details>')
-    lines.append(f'<summary>🔍 #{idx} — <code>{table_name}</code> — TB: {row["avg_time_ms"]}ms — {row["calls"]} lần gọi — {row["rows"]} dòng</summary>')
-    lines.append(f'')
-    lines.append(f'```sql')
-    lines.append(query_text)  # Giữ nguyên format gốc trong code block
-    lines.append(f'```')
-    lines.append(f'')
-    lines.append(f'| Chỉ Số | Giá Trị |')
-    lines.append(f'|--------|---------|')
-    lines.append(f'| **Mã truy vấn** | `{row["queryid"]}` |')
-    lines.append(f'| **Bảng chính** | `{table_name}` |')
-    lines.append(f'| **Thời gian TB** | {row["avg_time_ms"]} ms |')
-    lines.append(f'| **Thời gian cao nhất** | {row["max_time_ms"]} ms |')
-    lines.append(f'| **Tổng thời gian** | {row["total_time_ms"]} ms |')
-    lines.append(f'| **Số lần gọi** | {row["calls"]} |')
-    lines.append(f'| **Số dòng** | {row["rows"]} |')
-    lines.append(f'')
-    lines.append(f'</details>')
-    lines.append(f'')
-```
-
-**Áp dụng `<details>` cho TẤT CẢ phần có query text:**
-- Slow queries → `<details>` với SQL block
-- Blocking queries → `<details>` với cả 2 query (bị chặn + đang chặn) + gợi ý `pg_cancel_backend()`
-- Long running queries → `<details>` với query + gợi ý xử lý
-
-**Áp dụng `sanitize()` cho mọi cell KHÁC trong table:**
-- Table names, index names, schema names
-- Số liệu, phần trăm, dung lượng
-- Bất kỳ giá trị nào từ database đưa vào markdown table
-
-**Lưu ý:** Nếu `pg_stat_statements` chưa được cài (query 3.4a trả về 0 dòng), ghi nhận trong báo cáo và bỏ qua phần này.
-
-#### 3.5 Table Sizes (Top 20)
-```sql
-SELECT
-  schemaname,
-  relname as table_name,
-  pg_size_pretty(pg_total_relation_size(relid)) as total_size,
-  pg_size_pretty(pg_relation_size(relid)) as data_size,
-  pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as index_size,
-  n_live_tup as row_count
-FROM pg_stat_user_tables
-ORDER BY pg_total_relation_size(relid) DESC
-LIMIT 20;
-```
-
-#### 3.6 Missing Indexes (Bảng Có Nhiều Seq Scan)
-```sql
-SELECT
-  schemaname, relname,
-  seq_scan, seq_tup_read,
-  idx_scan, idx_tup_fetch,
-  n_live_tup,
-  CASE WHEN seq_scan + idx_scan > 0
-    THEN round(seq_scan::numeric / (seq_scan + idx_scan) * 100, 2)
-    ELSE 0
-  END as seq_scan_pct
-FROM pg_stat_user_tables
-WHERE seq_scan > 100
-  AND n_live_tup > 10000
-  AND (idx_scan IS NULL OR idx_scan < seq_scan)
-ORDER BY seq_tup_read DESC
-LIMIT 20;
-```
-
-#### 3.7 Index Usage Statistics
-```sql
-SELECT
-  schemaname, relname as table_name,
-  indexrelname as index_name,
-  idx_scan as times_used,
-  pg_size_pretty(pg_relation_size(indexrelid)) as index_size
-FROM pg_stat_user_indexes
-ORDER BY idx_scan ASC
-LIMIT 20;
-```
-
-#### 3.8 Unused Indexes (Lãng Phí Dung Lượng)
-```sql
-SELECT
-  schemaname, relname as table_name,
-  indexrelname as index_name,
-  idx_scan as times_used,
-  pg_size_pretty(pg_relation_size(indexrelid)) as index_size
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0
-  AND indexrelname NOT LIKE '%_pkey'
-ORDER BY pg_relation_size(indexrelid) DESC
-LIMIT 20;
-```
-
-#### 3.9 Blocking Queries
-```sql
-SELECT
-  blocked_locks.pid AS blocked_pid,
-  blocked_activity.usename AS blocked_user,
-  LEFT(blocked_activity.query, 150) AS blocked_query,
-  blocking_locks.pid AS blocking_pid,
-  blocking_activity.usename AS blocking_user,
-  LEFT(blocking_activity.query, 150) AS blocking_query
-FROM pg_catalog.pg_locks blocked_locks
-JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
-JOIN pg_catalog.pg_locks blocking_locks
-  ON blocking_locks.locktype = blocked_locks.locktype
-  AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
-  AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
-  AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
-  AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
-  AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
-  AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
-  AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
-  AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
-  AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
-  AND blocking_locks.pid != blocked_locks.pid
-JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
-WHERE NOT blocked_locks.granted;
-```
-
-#### 3.10 Long Running Queries (> 5 phút)
-```sql
-SELECT
-  pid,
-  usename,
-  state,
-  query_start,
-  now() - query_start AS duration,
-  LEFT(query, 200) AS query_preview
-FROM pg_stat_activity
-WHERE state != 'idle'
-  AND query_start < now() - interval '5 minutes'
-  AND datname = current_database()
-ORDER BY duration DESC;
-```
-
-#### 3.11 Dead Tuples (Cần VACUUM)
-```sql
-SELECT
-  schemaname, relname,
-  n_live_tup,
-  n_dead_tup,
-  CASE WHEN n_live_tup > 0
-    THEN round(n_dead_tup::numeric / n_live_tup * 100, 2)
-    ELSE 0
-  END as dead_pct,
-  last_vacuum,
-  last_autovacuum,
-  last_analyze,
-  last_autoanalyze
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 1000
-ORDER BY n_dead_tup DESC
-LIMIT 20;
-```
-
-#### 3.12 Replication Status (nếu có)
-```sql
-SELECT
-  client_addr,
-  state,
-  sent_lsn,
-  write_lsn,
-  flush_lsn,
-  replay_lsn,
-  pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replication_lag_bytes
-FROM pg_stat_replication;
-```
-
-### Bước 4: Tạo Báo Cáo Database (DB_STATUS_REPORT.md)
-
-Sử dụng template từ `references/template-db-report.md` để tạo file `DB_STATUS_REPORT.md` trong thư mục ngày.
-
-**Quy ước đánh giá tự động:**
-- Cache Hit: 🟢 >95% | 🟡 80-95% | 🔴 <80%
-- Dead Tuples: 🟢 <5% | 🟡 5-20% | 🔴 >20%
-- Seq Scan %: 🟢 <30% | 🟡 30-50% | 🔴 >50%
-- Connection Usage: 🟢 <60% max | 🟡 60-80% | 🔴 >80%
+**Áp dụng cho:** slow-query excerpt trong `PERFORMANCE_SOLUTIONS.md`, raw-SQL excerpt trong `CODE_ANALYSIS_REPORT.md`, và bất kỳ đoạn code/SQL nhiều dòng nào khác được trích dẫn trong 3 file này.
 
 ### Bước 5: Phân Tích Code (CODE_ANALYSIS_REPORT.md)
 
@@ -817,11 +469,8 @@ Báo cáo đã được lưu tại:
 
 ## Xử Lý Lỗi
 
-- Nếu không kết nối được DB: ghi log lỗi, tạo báo cáo rỗng với thông tin lỗi, tiếp tục dự án tiếp theo
-- Nếu `pg_stat_statements` chưa cài: bỏ qua phần slow queries, ghi nhận trong báo cáo
-- Nếu không có quyền đọc một số view: ghi nhận phần nào bị thiếu
-- Nếu `CodePath` không tồn tại hoặc rỗng: bỏ qua Code Report, chỉ tạo DB Report
-- Nếu `CodePath` không có trong .env: chỉ tạo DB Report
+- Không kết nối được DB / thiếu quyền đọc view / `pg_stat_statements` chưa cài: **đã được `scripts/analyzer.py` tự xử lý** — mỗi target lỗi được cô lập vào `collection_status`/`error`/`status: "skipped"` riêng của nó (xem Bước 3, mục 3)
+- Nếu `CodePath` không tồn tại hoặc rỗng, hoặc không có trong `.env`: bỏ qua Code Report, chỉ tạo DB Report
 - Nếu thư mục ngày đã tồn tại: hỏi user có muốn ghi đè không
 - Nếu solution-index.md không tìm thấy: tạo solutions dựa trên general best practices
 
