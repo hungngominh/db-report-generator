@@ -74,3 +74,40 @@ def test_render_downgrades_violating_finding_b3():
     assert "🔴 red" not in status
     assert "⚪ unknown" in status
     assert render_findings(data).count("🔴 red") == 0
+
+
+def test_sampling_window_is_displayed(sample_report):
+    out = render_db_status(sample_report)
+    assert "Cửa sổ lấy mẫu: 30s" in out
+    assert "2026-07-16T00:00:00Z → 2026-07-16T00:00:30Z" in out
+
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+
+
+def _load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def test_no_pgss_scenario_golden():
+    fixture = _load_fixture("report_data.no_pgss.sample.json")
+    _check("DB_STATUS_REPORT.no_pgss.md", render_db_status(fixture))
+
+
+def test_selfhosted_superuser_scenario_is_schema_valid_and_deterministic():
+    from scripts.lib import schema
+
+    fixture = _load_fixture("report_data.selfhosted_superuser.sample.json")
+    schema.validate_report(fixture)
+    out1 = render_db_status(fixture)
+    out2 = render_db_status(fixture)
+    assert out1 == out2
+    _check("DB_STATUS_REPORT.selfhosted_superuser.md", out1)
+
+
+def test_dead_tuples_100pct_scenario_shows_red():
+    fixture = _load_fixture("report_data.dead_tuples_100pct.sample.json")
+    out = render_db_status(fixture)
+    assert "🔴 red" in out
+    assert "maintenance.dead_tuples_pct" in out
+    _check("DB_STATUS_REPORT.dead_tuples_100pct.md", out)

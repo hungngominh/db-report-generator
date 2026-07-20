@@ -28,6 +28,14 @@ def render_db_status(data: dict) -> str:
             lines.append(f"> 🔴 Lỗi thu thập: {target.get('error') or 'không rõ'}")
             lines.append("")
             continue
+        sampling = target.get("sampling")
+        if sampling:
+            reset_note = " · ⚪ phát hiện reset pg_stat_statements giữa 2 mẫu" if sampling["reset_detected"] else ""
+            lines.append(
+                f"> Cửa sổ lấy mẫu: {sampling['window_seconds']}s "
+                f"({sampling['sample1_at']} → {sampling['sample2_at']}){reset_note}"
+            )
+            lines.append("")
         for block in sorted_block_names(target["diagnostics"]):
             diag = target["diagnostics"][block]
             suffix = f" · {diag['reason']}" if diag.get("reason") else ""

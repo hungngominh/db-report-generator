@@ -1,0 +1,30 @@
+{
+  "schema_version": "4.0",
+  "tool_version": "4.0.0",
+  "run": {"run_id": "run-fixture-dead-tuples-100", "started_at": "2026-07-16T00:00:00Z", "completed_at": "2026-07-16T00:00:05Z"},
+  "redaction_mode": "redact",
+  "targets": [
+    {
+      "target_id": "t-dead-tuples",
+      "database": "batch_db",
+      "collection_status": "ok",
+      "error": null,
+      "capabilities": {"server_version_num": 160004, "is_superuser": false, "vendor": "supabase", "managed": true},
+      "diagnostics": {
+        "dead_tuples": {
+          "collector_version": "1.0",
+          "scope": "table",
+          "status": "ok",
+          "reason": null,
+          "quality": {"sampling_valid": true, "reset_detected": false, "insufficient_activity": false, "truncated": false},
+          "metrics": [
+            {"schema": "public", "table": "events_log", "dead_pct": 100.0, "n_dead_tup": 500000, "n_live_tup": 0}
+          ],
+          "findings": [
+            {"finding_id": "maintenance.dead_tuples_pct", "severity": "warning", "assessment": "red", "confidence": "measured", "title": "Tỷ lệ dead tuple cao", "evidence_ids": [], "remediation_ids": []}
+          ]
+        }
+      }
+    }
+  ]
+}

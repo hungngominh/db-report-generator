@@ -6,6 +6,8 @@
 
 ## Target: app_prod (`t-main`) — thu thập: ok
 
+> Cửa sổ lấy mẫu: 30s (2026-07-16T00:00:00Z → 2026-07-16T00:00:30Z)
+
 ### overview — ok
 
 | Finding | Mức | Đánh giá | Tin cậy |

@@ -10,6 +10,7 @@
       "collection_status": "ok",
       "error": null,
       "capabilities": {"server_version_num": 160004, "is_superuser": false, "vendor": "supabase", "managed": true},
+      "sampling": {"window_seconds": 30, "sample1_at": "2026-07-16T00:00:00Z", "sample2_at": "2026-07-16T00:00:30Z", "reset_detected": false},
       "diagnostics": {
         "overview": {
           "collector_version": "1.0",

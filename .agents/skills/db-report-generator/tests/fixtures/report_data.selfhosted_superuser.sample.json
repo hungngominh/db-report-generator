@@ -1,0 +1,28 @@
+{
+  "schema_version": "4.0",
+  "tool_version": "4.0.0",
+  "run": {"run_id": "run-fixture-selfhosted-su", "started_at": "2026-07-16T00:00:00Z", "completed_at": "2026-07-16T00:00:05Z"},
+  "redaction_mode": "redact",
+  "targets": [
+    {
+      "target_id": "t-selfhosted-su",
+      "database": "onprem_erp",
+      "collection_status": "ok",
+      "error": null,
+      "capabilities": {"server_version_num": 140011, "is_superuser": true, "vendor": "self-hosted", "managed": false},
+      "diagnostics": {
+        "overview": {
+          "collector_version": "1.0",
+          "scope": "database",
+          "status": "ok",
+          "reason": null,
+          "quality": {"sampling_valid": true, "reset_detected": false, "insufficient_activity": false, "truncated": false},
+          "metrics": [],
+          "findings": [
+            {"finding_id": "db.reachable", "severity": "info", "assessment": "green", "confidence": "measured", "title": "Kết nối và thu thập thành công", "evidence_ids": [], "remediation_ids": []}
+          ]
+        }
+      }
+    }
+  ]
+}
