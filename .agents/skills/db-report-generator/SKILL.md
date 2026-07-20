@@ -3,15 +3,15 @@ name: db-report-generator
 description: Tự động quét tất cả thư mục database trong workspace, kết nối PostgreSQL qua .env, tạo báo cáo tình trạng DB + Code + GIẢI PHÁP PERFORMANCE cụ thể và lưu vào thư mục theo ngày (yyyy-MM-dd). Chẩn đoán vấn đề VÀ kê đơn giải pháp từ code đến DB.
 metadata:
   author: NGOMI
-  version: "3.0.0"
-  date: February 2026
+  version: "4.0.0"
+  date: July 2026
 ---
 
 # Database & Code Report Generator + Solution Engine
 
 Skill tự động tạo báo cáo tình trạng database PostgreSQL, phân tích code, VÀ đưa ra giải pháp performance cụ thể (ready-to-execute SQL + code fixes) cho tất cả dự án được cấu hình trong workspace.
 
-**v3.0 - Tích hợp Solution Engine (KB đóng gói nội bộ tại `references/kb/`, nguồn: `supabase-postgres-best-practices`)**: Mỗi vấn đề phát hiện được đi kèm giải pháp cụ thể với priority, SQL fix, code fix, và expected impact. Skill **self-contained** — không phụ thuộc skill KB ngoài.
+**v4.0 - Kiến trúc Python tất định** (`scripts/analyzer.py` → collectors → `scripts/rules.py` → `scripts/render.py`) sinh `DB_STATUS_REPORT.md`/`FINDINGS.md` không cần agent tự viết SQL, cộng Solution Engine (KB đóng gói nội bộ tại `references/kb/`, nguồn: `supabase-postgres-best-practices`) đi kèm mỗi finding với priority, SQL fix, code fix, và expected impact. Skill **self-contained** — không phụ thuộc skill KB ngoài.
 
 ## Ngôn Ngữ Báo Cáo
 
@@ -192,7 +192,7 @@ SELECT ...
 
 **Chỉ thực hiện khi `CodePath` được cấu hình trong .env.**
 
-Sử dụng template từ `references/template-code-report.md`.
+Sử dụng template từ `assets/templates/template-code-report.md`.
 
 #### 5.1 Quét Cấu Trúc Dự Án
 1. Đọc cấu trúc thư mục từ `CodePath`
@@ -289,7 +289,7 @@ Mỗi finding từ Bước 5.3-5.7 (raw SQL, SQL injection, N+1, mapping, connec
 
 ### Bước 6: Tạo Báo Cáo Tổng Hợp (COMBINED_REPORT.md)
 
-Sử dụng template từ `references/template-combined-report.md`.
+Sử dụng template từ `assets/templates/template-combined-report.md`.
 
 ### Mô hình đánh giá theo trục (Axis Model)
 
@@ -430,7 +430,7 @@ Cho các vấn đề hệ thống, đưa ra recommendations:
 
 #### 8.8 Write PERFORMANCE_SOLUTIONS.md
 
-Sử dụng template `references/template-solutions-report.md` để tạo report bao gồm:
+Sử dụng template `assets/templates/template-solutions-report.md` để tạo report bao gồm:
 - Executive summary (đếm theo priority)
 - Solutions grouped by priority (P0 → P3)
 - Ready-to-execute SQL scripts section (copy-paste chạy luôn)
@@ -513,19 +513,18 @@ e:\Skills/
 
 ## Report Templates
 
-Sử dụng các template chuẩn trong thư mục `references/`:
-- `references/template-db-report.md` - Template báo cáo Database
-- `references/template-code-report.md` - Template báo cáo Code
-- `references/template-solutions-report.md` - Template giải pháp Performance ⭐ NEW
-- `references/template-combined-report.md` - Template báo cáo tổng hợp
+`DB_STATUS_REPORT.md`/`FINDINGS.md` được sinh tự động bởi `scripts/render.py` (Bước 3-4) — không dùng template Handlebars. 3 báo cáo còn lại vẫn do agent tự viết, dùng template chuẩn trong `assets/templates/`:
+- `assets/templates/template-code-report.md` - Template báo cáo Code (Bước 5)
+- `assets/templates/template-solutions-report.md` - Template giải pháp Performance (Bước 8)
+- `assets/templates/template-combined-report.md` - Template báo cáo tổng hợp (Bước 6)
 
 ## SQL Query References
 
-Các query đầy đủ và giải thích chi tiết:
+Các file `.sql` dưới đây là tài liệu tham khảo lịch sử (nội dung tương đương các query trong `scripts/collectors/*.py`) — Bước 3 KHÔNG còn chạy các file này trực tiếp:
 - `references/queries-overview.sql` - Queries tổng quan database
 - `references/queries-performance.sql` - Queries phân tích hiệu suất
 - `references/queries-index.sql` - Queries phân tích index
-- `references/remediation-policy.md` - Chính sách an toàn 5-tier cho mọi remediation SQL ⭐ NEW
+- `references/remediation-policy.md` - Chính sách an toàn 5-tier cho mọi remediation SQL (vẫn dùng ở Bước 8)
 
 ## Solution Engine
 

@@ -11,13 +11,13 @@ def test_skill_md_has_no_legacy_0_100_score(skill_dir):
 
 
 def test_combined_report_template_has_no_legacy_0_100_score(skill_dir):
-    text = (skill_dir / "references" / "template-combined-report.md").read_text(encoding="utf-8")
+    text = (skill_dir / "assets" / "templates" / "template-combined-report.md").read_text(encoding="utf-8")
     for pattern in _FORBIDDEN:
         assert not pattern.search(text), f"found forbidden pattern {pattern.pattern!r} in template-combined-report.md"
 
 
 def test_combined_report_template_has_axis_matrix_placeholders(skill_dir):
-    text = (skill_dir / "references" / "template-combined-report.md").read_text(encoding="utf-8")
+    text = (skill_dir / "assets" / "templates" / "template-combined-report.md").read_text(encoding="utf-8")
     for axis_key in ("db_health", "query_performance", "maintenance", "connections", "security_rls"):
         assert f"{{{{{axis_key}_icon}}}}" in text, f"missing {axis_key}_icon placeholder"
 
@@ -64,21 +64,21 @@ def test_skill_md_references_remediation_policy(skill_dir):
 
 
 def test_solutions_template_has_dangerous_section_excluded_from_scripts(skill_dir):
-    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    text = (skill_dir / "assets" / "templates" / "template-solutions-report.md").read_text(encoding="utf-8")
     assert "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" in text
     assert "dangerous_solutions" in text
     assert "Đã loại trừ mọi fix remediation_class=dangerous" in text
 
 
 def test_solutions_template_uses_recovery_or_rollback(skill_dir):
-    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    text = (skill_dir / "assets" / "templates" / "template-solutions-report.md").read_text(encoding="utf-8")
     assert "{{recovery_or_rollback_sql}}" in text
     assert "{{rollback_sql}}" not in text
     assert "**Hoàn tác" not in text
 
 
 def test_solutions_template_footer_version_v4(skill_dir):
-    text = (skill_dir / "references" / "template-solutions-report.md").read_text(encoding="utf-8")
+    text = (skill_dir / "assets" / "templates" / "template-solutions-report.md").read_text(encoding="utf-8")
     assert "db-report-generator v4" in text
     assert "v3.0.0" not in text
 
@@ -102,3 +102,29 @@ def test_skill_md_error_handling_delegates_to_analyzer(skill_dir):
     section = text[idx:idx + 800]
     assert "analyzer.py" in section
     assert "ghi log lỗi, tạo báo cáo rỗng với thông tin lỗi" not in section
+
+
+def test_templates_moved_to_assets_dir(skill_dir):
+    for name in ("template-code-report.md", "template-combined-report.md", "template-solutions-report.md"):
+        assert (skill_dir / "assets" / "templates" / name).exists(), f"{name} not found under assets/templates/"
+        assert not (skill_dir / "references" / name).exists(), f"{name} still present under references/"
+
+
+def test_template_db_report_removed(skill_dir):
+    assert not (skill_dir / "references" / "template-db-report.md").exists()
+
+
+def test_skill_md_version_bumped_to_4(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert 'version: "4.0.0"' in text
+    assert 'version: "3.0.0"' not in text
+
+
+def test_skill_md_report_templates_section_points_to_assets(skill_dir):
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    idx = text.index("## Report Templates")
+    section = text[idx:idx + 600]
+    assert "assets/templates/template-code-report.md" in section
+    assert "assets/templates/template-combined-report.md" in section
+    assert "assets/templates/template-solutions-report.md" in section
+    assert "references/template-db-report.md" not in section
