@@ -476,11 +476,11 @@ Báo cáo đã được lưu tại:
 
 ## Thư Mục Làm Việc
 
-**BẮT BUỘC: Tất cả script Python, file tạm, file trung gian PHẢI được tạo trong thư mục workspace hiện tại (cùng cấp với các thư mục dự án). KHÔNG ĐƯỢC dùng thư mục tạm hệ thống (C:\Users\...\Temp, /tmp, scratchpad, v.v.).**
+**BẮT BUỘC: Mọi file trung gian, script tạm mà agent tự tạo (cho Bước 5, 6, 8) PHẢI được tạo trong thư mục workspace hiện tại (cùng cấp với các thư mục dự án). KHÔNG ĐƯỢC dùng thư mục tạm hệ thống (C:\Users\...\Temp, /tmp, scratchpad, v.v.).**
 
 Cụ thể:
-- Script Python kết nối DB: tạo tại `{workspace}/.scripts/generate_db_report.py`
-- File kết quả trung gian: tạo tại `{workspace}/.scripts/`
+- Bước 3 (thu thập dữ liệu DB) đã dùng script đóng gói sẵn `scripts/run_report.py` trong thư mục skill — **không** tạo script kết nối DB mới cho bước này.
+- Nếu agent cần script tạm cho Bước 5/6/8 (vd. phân tích code, tổng hợp report): tạo tại `{workspace}/.scripts/`
 - Thư mục `.scripts/` sẽ được tạo tự động nếu chưa có
 - Sau khi chạy xong, có thể giữ lại script để user debug hoặc chạy lại
 
@@ -488,7 +488,7 @@ Ví dụ với workspace `e:\Skills`:
 ```
 e:\Skills/
 ├── .scripts/
-│   └── generate_db_report.py    ← Script chạy tại đây
+│   └── (script tạm nếu Bước 5/6/8 cần)
 ├── SIGO/
 │   ├── .env
 │   └── 2026-02-04/
