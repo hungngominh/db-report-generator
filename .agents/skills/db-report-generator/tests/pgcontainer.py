@@ -1,4 +1,5 @@
 """Throwaway Docker Postgres for live-DB tests. Skips cleanly without Docker."""
+import os
 import shutil
 import socket
 import subprocess
@@ -26,8 +27,8 @@ def _free_port() -> int:
 
 
 class PostgresContainer:
-    def __init__(self, image: str = "postgres:16"):
-        self.image = image
+    def __init__(self, image: str | None = None):
+        self.image = image or os.environ.get("DBREPORT_TEST_PG_IMAGE", "postgres:16")
         self.name = None
         self.port = None
 

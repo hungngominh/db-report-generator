@@ -8,16 +8,11 @@ jobs:
     strategy:
       matrix:
         pg: [14, 15, 16, 17, 18]
-    services:
-      postgres:
-        image: postgres:${{ matrix.pg }}
-        env: {POSTGRES_PASSWORD: postgres}
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     defaults:
       run:
         working-directory: .agents/skills/db-report-generator
+    env:
+      DBREPORT_TEST_PG_IMAGE: postgres:${{ matrix.pg }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

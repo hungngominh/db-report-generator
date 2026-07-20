@@ -36,3 +36,18 @@ def test_container_cleaned_up_when_ready_fails(monkeypatch):
         capture_output=True, text=True,
     )
     assert out.stdout.strip() == "", f"leaked container {pg.name}"
+
+
+def test_default_image_is_pg16_without_env_var(monkeypatch):
+    monkeypatch.delenv("DBREPORT_TEST_PG_IMAGE", raising=False)
+    assert PostgresContainer().image == "postgres:16"
+
+
+def test_image_honors_env_var_override(monkeypatch):
+    monkeypatch.setenv("DBREPORT_TEST_PG_IMAGE", "postgres:14")
+    assert PostgresContainer().image == "postgres:14"
+
+
+def test_explicit_image_arg_overrides_env_var(monkeypatch):
+    monkeypatch.setenv("DBREPORT_TEST_PG_IMAGE", "postgres:14")
+    assert PostgresContainer(image="postgres:18").image == "postgres:18"
