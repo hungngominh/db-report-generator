@@ -15,3 +15,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Claude Code skill discovery junction (Windows-only, points into .agents/skills/)
+.claude/skills/
