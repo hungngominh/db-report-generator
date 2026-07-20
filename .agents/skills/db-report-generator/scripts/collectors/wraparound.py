@@ -12,14 +12,14 @@ SELECT current_setting('vacuum_failsafe_age')::bigint,
 """
 
 _DATABASE_SQL = """
-SELECT datname, age(datfrozenxid) AS xid_age, age(datminmxid) AS mxid_age
+SELECT datname, age(datfrozenxid) AS xid_age, mxid_age(datminmxid) AS mxid_age
 FROM pg_database
 WHERE datallowconn
 ORDER BY age(datfrozenxid) DESC
 """
 
 _TABLE_SQL = """
-SELECT n.nspname, c.relname, age(c.relfrozenxid) AS xid_age, age(c.relminmxid) AS mxid_age
+SELECT n.nspname, c.relname, age(c.relfrozenxid) AS xid_age, mxid_age(c.relminmxid) AS mxid_age
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'm', 't')

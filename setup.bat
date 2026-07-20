@@ -48,6 +48,17 @@ if not exist "%WORKSPACE%\.agents\skills\db-report-generator\references" mkdir "
 xcopy /s /y /q "%~dp0.agents\skills\db-report-generator\*" "%WORKSPACE%\.agents\skills\db-report-generator\" >nul
 echo [OK] Agent skill (scripts + references + assets/templates, bao gom KB tai references\kb\)
 
+:: Setup Claude Code skill discovery junction (.claude/skills -> .agents/skills)
+:: Can thiet de lenh /db-report-generator hoat dong trong Claude Code CLI
+if not exist "%WORKSPACE%\.claude\skills" mkdir "%WORKSPACE%\.claude\skills"
+if exist "%WORKSPACE%\.claude\skills\db-report-generator" rmdir "%WORKSPACE%\.claude\skills\db-report-generator" >nul 2>&1
+mklink /J "%WORKSPACE%\.claude\skills\db-report-generator" "%WORKSPACE%\.agents\skills\db-report-generator" >nul
+if errorlevel 1 (
+    echo [CANH BAO] Khong the tao junction .claude\skills - lenh /db-report-generator co the khong nhan duoc skill nay
+) else (
+    echo [OK] Claude Code skill discovery junction da duoc tao
+)
+
 echo.
 echo ============================================
 echo   CAI DAT HOAN TAT!
