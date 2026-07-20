@@ -69,7 +69,6 @@ File `.env` trong mỗi thư mục dự án chứa JSON với cấu trúc:
   "Username": "user",
   "Password": "password",
   "Port": 5432,
-  "MaxPoolSize": 500,
   "CodePath": "D:/Projects/MyApp",
   "ProjectName": "My Application",
   "CodeLanguage": "csharp",
@@ -86,7 +85,6 @@ File `.env` trong mỗi thư mục dự án chứa JSON với cấu trúc:
 | `Username` | ✅ | - | Username kết nối DB |
 | `Password` | ✅ | - | Password kết nối DB |
 | `Port` | ❌ | `5432` | Port PostgreSQL |
-| `MaxPoolSize` | ❌ | `100` | Kích thước connection pool tối đa |
 | `CodePath` | ❌ | `null` | Đường dẫn tuyệt đối tới thư mục code dự án. Nếu không có, bỏ qua phần Code Report |
 | `ProjectName` | ❌ | Tên thư mục | Tên hiển thị của dự án |
 | `CodeLanguage` | ❌ | auto-detect | Ngôn ngữ chính: `csharp`, `java`, `python`, `typescript`, `go`, `php` |
