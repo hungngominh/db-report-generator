@@ -18,3 +18,7 @@ Thumbs.db
 
 # Local Claude Code skill discovery junction (Windows-only, points into .agents/skills/)
 .claude/skills/
+
+# CI workflows and internal planning docs — not part of the portable package
+.github/
+docs/
