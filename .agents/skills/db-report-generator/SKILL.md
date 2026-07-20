@@ -72,7 +72,13 @@ File `.env` trong mỗi thư mục dự án chứa JSON với cấu trúc:
   "CodePath": "D:/Projects/MyApp",
   "ProjectName": "My Application",
   "CodeLanguage": "csharp",
-  "Framework": "dotnet"
+  "Framework": "dotnet",
+  "SamplingWindowSeconds": 30,
+  "ExplainMode": "plan",
+  "ExplainTopN": 5,
+  "ExplainAnalyzeTopN": 0,
+  "ExplainStatementTimeoutMs": 3000,
+  "ExplainLockTimeoutMs": 500
 }
 ```
 
