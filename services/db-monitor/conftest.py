@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import psycopg2
 import pytest
 
 DB_MONITOR_DIR = Path(__file__).resolve().parent
@@ -40,4 +41,14 @@ def target_dsn_kwargs(_target_pg) -> dict:
 
 @pytest.fixture
 def storage_dsn_url(_storage_pg) -> str:
+    # _storage_pg is session-scoped (one container reused across tests for
+    # speed), so reset the schema per test to keep tests isolated from each
+    # other's data.
+    conn = psycopg2.connect(_storage_pg.dsn_url)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+    finally:
+        conn.close()
     return _storage_pg.dsn_url
