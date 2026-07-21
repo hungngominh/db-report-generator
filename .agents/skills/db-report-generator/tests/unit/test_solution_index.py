@@ -140,6 +140,18 @@ def test_pattern_19_schema_hygiene_cites_real_finding_id(skill_dir):
     assert "`schema-data-types.md`" in section
 
 
+def test_pattern_1b_index_cache_hit_cites_real_finding_id(skill_dir):
+    text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
+    idx = text.index("## 1b. LOW CACHE HIT RATIO")
+    end = text.index("## 2. HIGH SEQUENTIAL SCAN RATIO")
+    section = text[idx:end]
+    assert "`index_io`" in section
+    assert "query_perf.index_cache_hit_ratio" in section
+    assert "observe-only" in section
+    assert "pg_statio_user_indexes" in section
+    assert "pg_stat_user_indexes" in section
+
+
 def test_kb_index_pattern_count_updated(skill_dir):
     text = (skill_dir / "references" / "kb" / "_index.md").read_text(encoding="utf-8")
     assert "19 problem pattern" in text

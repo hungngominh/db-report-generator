@@ -405,6 +405,8 @@ Với mỗi vấn đề, tạo SQL fix cụ thể:
 5. Thêm `recovery_or_rollback` cho mỗi fix (xem `references/remediation-policy.md` mục 2 để biết quy ước theo từng loại fix)
 6. Nếu `Remediation Class` của fix là `dangerous`, KHÔNG đưa fix đó vào bất kỳ script "SẴN SÀNG CHẠY" nào — đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" thay thế
 
+⛔ **Dedupe trước khi sinh DDL cho `fk_missing_index`** — nhiều constraint FK khác tên nhưng cùng `(schema, table, columns)` là chuyện có thật trên schema đã migrate nhiều lần (đặc biệt tên dạng `FK__<table>__<hash>` tự sinh bởi SQL Server). Mỗi finding trong `report_data.json` là 1 constraint, KHÔNG phải 1 index cần tạo — **group theo `(schema, table, columns)` trước khi viết `CREATE INDEX CONCURRENTLY`, chỉ giữ 1 câu lệnh cho mỗi nhóm.** Nếu một nhóm có >1 constraint, ghi rõ trong phần "Phát hiện phụ" của solution đó (bảng: cột — số constraint trùng — số index thực cần) và gợi ý xem lại việc `DROP CONSTRAINT` các bản dư (không đưa vào script tự động vì cần xác nhận thủ công không có dependency nào phụ thuộc tên constraint cụ thể). Đếm tổng "constraint" và tổng "index cần tạo" là hai con số khác nhau — nêu cả hai trong tóm tắt tổng quan, KHÔNG chỉ nêu số constraint.
+
 #### 8.6 Generate Code-Side Solutions
 
 Cho các vấn đề code (N+1, SQL injection, missing pagination):

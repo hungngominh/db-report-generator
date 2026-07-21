@@ -16,7 +16,7 @@ Khi db-report-generator phát hiện vấn đề, nó tra cứu file này để 
 
 ## 1. LOW CACHE HIT RATIO (Database-Level)
 
-- **Detection**: [Tự động] Diagnostic block `database_stats`, field `cache_hit_ratio` (0.0–1.0, KHÔNG phải `_pct`) → finding_id `db_health.cache_hit_ratio` (red < 0.80, yellow < 0.90; `references/rules/db-health.json`). LƯU Ý: đây là cache hit ratio cấp DATABASE, không phải cấp table — không có collector nào query `pg_statio_user_tables`. Cho cache hit cấp INDEX, xem block `index_io` / finding_id `query_perf.index_cache_hit_ratio`.
+- **Detection**: [Tự động] Diagnostic block `database_stats`, field `cache_hit_ratio` (0.0–1.0, KHÔNG phải `_pct`) → finding_id `db_health.cache_hit_ratio` (red < 0.80, yellow < 0.90; `references/rules/db-health.json`). LƯU Ý: đây là cache hit ratio cấp DATABASE, không phải cấp table — không có collector nào query `pg_statio_user_tables`. Cho cache hit cấp INDEX, xem mục **1b** bên dưới.
 - **Priority**: P0 (< 50%) | P1 (50-80%) | P2 (80-90%)
 - **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-covering-indexes.md`
@@ -46,6 +46,40 @@ FROM pg_statio_user_tables WHERE relname = '{{table_name}}';
 ```
 
 **Expected Impact**: 100-1000x faster queries trên indexed columns
+
+---
+
+## 1b. LOW CACHE HIT RATIO (Index-Level)
+
+- **Detection**: [Tự động] Diagnostic block `index_io` (`scripts/collectors/index_io.py`), field `cache_hit_ratio` (0.0–1.0) → finding_id `query_perf.index_cache_hit_ratio` (red < 0.80, yellow < 0.90; `references/rules/query-performance.json`). Đây là cache hit ratio cấp INDEX (khác mục 1, cấp DATABASE).
+- **Priority**: P1 (< 80%) | P2 (80-90%)
+- **Remediation Class**: `observe-only` — mẫu (`idx_blks_hit` + `idx_blks_read`) của một index riêng lẻ thường nhỏ nên tỷ lệ dễ nhiễu; chỉ dùng để theo dõi xu hướng qua nhiều lần lấy mẫu, KHÔNG tự động suy ra hành động DDL cụ thể.
+- **Reference**: `query-missing-indexes.md`, `query-covering-indexes.md`
+- **Category**: DB-side / Index
+
+⚠️ **Lỗi thường gặp**: `idx_scan` KHÔNG tồn tại trong `pg_statio_user_indexes` (view đó chỉ có `idx_blks_hit`/`idx_blks_read`). `idx_scan` nằm trong `pg_stat_user_indexes`. Muốn lấy cả hai trong 1 câu truy vấn, PHẢI JOIN hai view qua `indexrelid` — xem Verify bên dưới (khớp đúng cú pháp SQL mà collector `index_io.py` đang dùng).
+
+**Fix Template** (chưa thể sinh SQL DDL tự động — cần xác định query cụ thể trước):
+```sql
+-- Bước 1: Tìm các query đang dùng bảng chứa index này (thay {{table_name}} bằng tên bảng thực tế)
+SELECT LEFT(query, 300), calls, mean_exec_time
+FROM pg_stat_statements
+WHERE query ILIKE '%{{table_name}}%'
+ORDER BY total_exec_time DESC LIMIT 10;
+```
+
+**Verify:**
+```sql
+SELECT sio.schemaname, sio.relname AS table_name, sio.indexrelname AS index_name,
+       COALESCE(sui.idx_scan, 0) AS idx_scan, sio.idx_blks_hit, sio.idx_blks_read,
+       ROUND(sio.idx_blks_hit::numeric / NULLIF(sio.idx_blks_hit + sio.idx_blks_read, 0), 4) AS
+         cache_hit_ratio
+FROM pg_statio_user_indexes sio
+JOIN pg_stat_user_indexes sui USING (indexrelid)
+WHERE sio.indexrelname IN ({{index_name_list}});
+```
+
+**Expected Impact**: Không áp dụng trực tiếp — mục đích là theo dõi xu hướng qua nhiều lần lấy mẫu (khuyến nghị 3-7 ngày) trước khi quyết định hành động (tăng cache / bỏ index nếu chỉ là mức độ nhỏ).
 
 ---
 
