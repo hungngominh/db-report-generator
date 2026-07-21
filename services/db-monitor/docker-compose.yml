@@ -1,0 +1,24 @@
+services:
+  storage-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: dbmonitor
+      POSTGRES_USER: dbmonitor
+      POSTGRES_PASSWORD: dbmonitor
+    volumes:
+      - storage-db-data:/var/lib/postgresql/data
+    ports:
+      - "55490:5432"
+
+  monitor:
+    build:
+      context: ../..
+      dockerfile: services/db-monitor/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - storage-db
+    restart: unless-stopped
+
+volumes:
+  storage-db-data:
