@@ -71,6 +71,24 @@ def test_fk_missing_index_fires_red():
     assert findings[0]["finding_id"] == "maintenance.fk_missing_index:public:orders:orders_user_id_fkey"
 
 
+def test_seq_scan_red_above_80_percent():
+    diag = {"status": "ok", "quality": _quality(),
+            "metrics": [{"schema": "public", "table": "t", "seq_scan": 90, "idx_scan": 10,
+                         "n_live_tup": 50000, "seq_scan_pct": 90.0}]}
+    findings = rules.evaluate_diagnostic("seq_scan", diag, _rules_by_block())
+    assert len(findings) == 1
+    assert findings[0]["finding_id"] == "maintenance.seq_scan_pct:public:t"
+    assert findings[0]["assessment"] == "red"
+
+
+def test_seq_scan_green_below_50_percent_is_not_a_finding():
+    diag = {"status": "ok", "quality": _quality(),
+            "metrics": [{"schema": "public", "table": "t", "seq_scan": 10, "idx_scan": 90,
+                         "n_live_tup": 50000, "seq_scan_pct": 10.0}]}
+    findings = rules.evaluate_diagnostic("seq_scan", diag, _rules_by_block())
+    assert findings == []
+
+
 def test_schema_hygiene_issue_fires_yellow_for_missing_pk():
     diag = {"status": "ok", "quality": _quality(),
             "metrics": [{"schema": "public", "table": "events", "issue": "missing_primary_key",

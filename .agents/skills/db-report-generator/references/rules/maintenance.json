@@ -56,6 +56,18 @@
     "confidence": "measured"
   },
   {
+    "finding_id": "maintenance.seq_scan_pct",
+    "title": "Tỷ lệ sequential scan cao trên bảng lớn",
+    "severity": "warning",
+    "kind": "threshold",
+    "block": "seq_scan",
+    "metric_key": "seq_scan_pct",
+    "direction": "higher_is_worse",
+    "thresholds": {"red": 80, "yellow": 50},
+    "row_identity_fields": ["schema", "table"],
+    "confidence": "measured"
+  },
+  {
     "finding_id": "maintenance.schema_hygiene_issue",
     "title": "Vấn đề schema hygiene (thiếu PK, UUID PK trên bảng lớn, hoặc timestamp không có timezone)",
     "severity": "notice",

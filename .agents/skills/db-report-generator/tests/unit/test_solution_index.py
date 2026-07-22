@@ -49,7 +49,6 @@ def test_pattern_9_cites_real_sql_injection_kb_file(skill_dir):
 def test_manual_only_patterns_marked_explicitly(skill_dir):
     text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
     for heading, next_heading in [
-        ("## 2. HIGH SEQUENTIAL SCAN RATIO", "## 3. HIGH DEAD TUPLE RATIO"),
         ("## 11. LARGE TABLE WITHOUT PARTITIONING", "## 12. MISSING FOREIGN KEY INDEXES"),
         ("## 13. SUBOPTIMAL SERVER CONFIGURATION", "## Priority Assignment Rules"),
     ]:
@@ -64,6 +63,7 @@ def test_automated_patterns_cite_real_diagnostic_blocks(skill_dir):
     text = (skill_dir / "references" / "kb" / "solution-index.md").read_text(encoding="utf-8")
     checks = {
         "## 1. LOW CACHE HIT RATIO": ("database_stats", "db_health.cache_hit_ratio"),
+        "## 2. HIGH SEQUENTIAL SCAN RATIO": ("seq_scan", "maintenance.seq_scan_pct"),
         "## 3. HIGH DEAD TUPLE RATIO": ("dead_tuples", "maintenance.dead_tuples_pct"),
         "## 4. SLOW QUERIES": ("query_stats", "query_perf.slow_query_mean_exec_time"),
         "## 6. CONNECTION EXHAUSTION": ("connection_depth", "connections.cluster_pressure"),

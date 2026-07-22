@@ -85,7 +85,7 @@ WHERE sio.indexrelname IN ({{index_name_list}});
 
 ## 2. HIGH SEQUENTIAL SCAN RATIO
 
-- **Detection**: [Gợi ý thủ công — không có collector] Không có block/collector nào trong db-report-generator v4 thu thập `seq_scan`/`idx_scan` cấp table (`pg_stat_user_tables`). Đây KHÔNG phải một automated finding — dùng Fix Template bên dưới như một truy vấn thủ công khi nghi ngờ table bị seq scan nhiều (vd. khi thấy `Seq Scan` trong EXPLAIN plan của mục 4/16).
+- **Detection**: [Tự động] Diagnostic block `seq_scan`, field `seq_scan_pct` (`seq_scan / (seq_scan + idx_scan) * 100`) → finding_id `maintenance.seq_scan_pct` (red > 80%, yellow > 50%; `references/rules/maintenance.json`, row_identity `schema,table`). LƯU Ý: collector chỉ xét bảng có `n_live_tup > 10,000` (khớp floor thấp nhất P1 bên dưới) — bảng nhỏ hơn bị loại ngay từ SQL vì Postgres ưu tiên seq scan trên bảng nhỏ một cách hợp lý, không phải vấn đề. Rule hiện dùng một ngưỡng % duy nhất (không tách riêng mốc >100K dòng cho P0), theo đúng cách các rule tỷ lệ % khác trong `maintenance.json` (`dead_tuples_pct`, `stale_stats_pct`, `index_bloat_pct`) đã làm.
 - **Priority**: P0 (> 80% seq, > 100K rows) | P1 (> 50% seq, > 10K rows)
 - **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-composite-indexes.md`
