@@ -2,7 +2,10 @@ import statistics
 
 import pytest
 
-from scripts.sampler import combined_stddev, compute_deltas, reset_between
+from scripts.sampler import (
+    combined_stddev, compute_deltas, reset_between, cumulative_from_snapshot,
+)
+import scripts.sampler as sampler
 
 
 def test_combined_stddev_matches_population_stddev_of_delta_subset():
@@ -114,3 +117,31 @@ def test_compute_deltas_sorted_by_total_exec_time_desc_then_queryid():
     s2 = _snap("t0", "p0", {"a": row_a, "b": row_b})
     result = compute_deltas(s1, s2)
     assert [d["queryid"] for d in result["deltas"]] == ["b", "a"]   # total_exec_time desc, not calls
+
+
+def test_cumulative_from_snapshot_maps_lifetime_fields():
+    rows = {"q1": {**_ROW, "calls": 42, "total_exec_time": 840.0},
+            "q2": {**_ROW, "query": "select 2", "calls": 7, "total_exec_time": 70.0}}
+    out = {c["queryid"]: c for c in cumulative_from_snapshot(_snap("t0", "p0", rows))}
+    assert out["q1"] == {"queryid": "q1", "query": "select 1",
+                         "calls": 42, "total_exec_time_ms": 840.0}
+    assert out["q2"]["calls"] == 7
+    assert out["q2"]["total_exec_time_ms"] == 70.0
+
+
+def test_cumulative_from_snapshot_empty_rows():
+    assert cumulative_from_snapshot(_snap("t0", "p0", {})) == []
+
+
+def test_sample_window_includes_cumulative_even_on_reset(monkeypatch):
+    snaps = iter([
+        _snap("t0", "p0", {"q1": {**_ROW, "calls": 10, "total_exec_time": 100.0}}),
+        _snap("t1", "p0", {"q1": {**_ROW, "calls": 99, "total_exec_time": 990.0}}),  # stats_reset changed
+    ])
+    monkeypatch.setattr(sampler, "snapshot_pg_stat_statements",
+                        lambda conn, schema: next(snaps))
+    result = sampler.sample_pg_stat_statements_window(None, "public", 0, sleep_fn=lambda s: None)
+    assert result["reset_detected"] is True
+    assert result["deltas"] == []
+    assert [c["queryid"] for c in result["cumulative"]] == ["q1"]
+    assert result["cumulative"][0]["calls"] == 99  # lifetime, from snap2

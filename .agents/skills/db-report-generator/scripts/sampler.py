@@ -92,6 +92,20 @@ def compute_deltas(snap1: dict, snap2: dict) -> dict:
     return {"reset_detected": False, "deltas": deltas}
 
 
+def cumulative_from_snapshot(snap: dict) -> list:
+    """Lifetime per-queryid rows from a single snapshot -- the cumulative
+    fallback source for seq_scan evidence. Unlike compute_deltas this needs
+    only one snapshot and is valid regardless of any reset: a snapshot's
+    cumulative counts are always real. total_exec_time is surfaced as
+    total_exec_time_ms for parity with the delta path's window_* fields.
+    """
+    return [
+        {"queryid": queryid, "query": row["query"],
+         "calls": row["calls"], "total_exec_time_ms": row["total_exec_time"]}
+        for queryid, row in snap["rows"].items()
+    ]
+
+
 def snapshot_pg_stat_statements(conn, schema: str) -> dict:
     """One point-in-time snapshot of pg_stat_statements + its reset marker +
     the server start time (spec §0.A2 restart detection). Each call is its
@@ -141,4 +155,5 @@ def sample_pg_stat_statements_window(conn, schema: str, window_seconds: int,
         "sample2_at": sample2_at,
         "reset_detected": result["reset_detected"],
         "deltas": result["deltas"],
+        "cumulative": cumulative_from_snapshot(snap2),
     }
