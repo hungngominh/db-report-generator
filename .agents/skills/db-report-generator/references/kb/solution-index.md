@@ -89,7 +89,7 @@ WHERE sio.indexrelname IN ({{index_name_list}});
 - **Priority**: P0 (> 80% seq, > 100K rows) | P1 (> 50% seq, > 10K rows)
 - **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-composite-indexes.md`
-- **Category**: DB-side / Index (thủ công)
+- **Category**: DB-side / Index
 
 **Fix Template:**
 ```sql
