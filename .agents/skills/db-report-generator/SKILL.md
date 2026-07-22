@@ -341,7 +341,7 @@ Tổng hợp issues từ Bước 3-5:
 
 **Từ DB diagnostics (Bước 3):**
 - Tables có `cache_hit_pct < 90%`
-- Tables có `seq_scan_pct > 50%` và `n_live_tup > 10,000`
+- Tables có `seq_scan_pct > 50%` và `n_live_tup > 10,000` (nếu diagnostic có `related_queries` không rỗng, dùng chính query đó thay vì tự đoán cột filter)
 - Tables có `dead_pct > 5%`
 - Slow queries (`mean_exec_time > 100ms`)
 - Unused indexes (`idx_scan = 0`)
@@ -406,6 +406,8 @@ Với mỗi vấn đề, tạo SQL fix cụ thể:
 6. Nếu `Remediation Class` của fix là `dangerous`, KHÔNG đưa fix đó vào bất kỳ script "SẴN SÀNG CHẠY" nào — đưa vào mục "GIẢI PHÁP CẦN REVIEW THỦ CÔNG (DANGEROUS)" thay thế
 
 ⛔ **Dedupe trước khi sinh DDL cho `fk_missing_index`** — nhiều constraint FK khác tên nhưng cùng `(schema, table, columns)` là chuyện có thật trên schema đã migrate nhiều lần (đặc biệt tên dạng `FK__<table>__<hash>` tự sinh bởi SQL Server). Mỗi finding trong `report_data.json` là 1 constraint, KHÔNG phải 1 index cần tạo — **group theo `(schema, table, columns)` trước khi viết `CREATE INDEX CONCURRENTLY`, chỉ giữ 1 câu lệnh cho mỗi nhóm.** Nếu một nhóm có >1 constraint, ghi rõ trong phần "Phát hiện phụ" của solution đó (bảng: cột — số constraint trùng — số index thực cần) và gợi ý xem lại việc `DROP CONSTRAINT` các bản dư (không đưa vào script tự động vì cần xác nhận thủ công không có dependency nào phụ thuộc tên constraint cụ thể). Đếm tổng "constraint" và tổng "index cần tạo" là hai con số khác nhau — nêu cả hai trong tóm tắt tổng quan, KHÔNG chỉ nêu số constraint.
+
+⛔ **Render `related_queries` của `seq_scan` bằng `<details>`, không phải bằng cách đoán cột filter** — mỗi row trong diagnostic `seq_scan` có thể có field `related_queries` (danh sách query thật đã bắt được trong sampling window, full text + `window_calls` + `window_total_exec_time_ms`). Khi field này không rỗng, PHẢI hiển thị nguyên văn từng query trong khối `<details>` riêng cho bảng đó (theo đúng convention Phần B ở trên: bảng chỉ có số liệu, query text nằm trong `<details>`, `<summary>` dạng `🔍 <code>{schema}.{table}</code> — {window_calls} lần gọi trong window`), KHÔNG tự suy diễn cột filter qua tên bảng hay qua fix template mẫu. Khi `related_queries` rỗng (sampling window không bắt được query nào chạm bảng này), ghi rõ điều đó trong phần solution thay vì im lặng bỏ qua — gợi ý chạy lại report vào giờ cao điểm nghiệp vụ.
 
 #### 8.6 Generate Code-Side Solutions
 

@@ -85,7 +85,7 @@ WHERE sio.indexrelname IN ({{index_name_list}});
 
 ## 2. HIGH SEQUENTIAL SCAN RATIO
 
-- **Detection**: [Tự động] Diagnostic block `seq_scan`, field `seq_scan_pct` (`seq_scan / (seq_scan + idx_scan) * 100`) → finding_id `maintenance.seq_scan_pct` (red > 80%, yellow > 50%; `references/rules/maintenance.json`, row_identity `schema,table`). LƯU Ý: collector chỉ xét bảng có `n_live_tup > 10,000` (khớp floor thấp nhất P1 bên dưới) — bảng nhỏ hơn bị loại ngay từ SQL vì Postgres ưu tiên seq scan trên bảng nhỏ một cách hợp lý, không phải vấn đề. Rule hiện dùng một ngưỡng % duy nhất (không tách riêng mốc >100K dòng cho P0), theo đúng cách các rule tỷ lệ % khác trong `maintenance.json` (`dead_tuples_pct`, `stale_stats_pct`, `index_bloat_pct`) đã làm.
+- **Detection**: [Tự động] Diagnostic block `seq_scan`, field `seq_scan_pct` (`seq_scan / (seq_scan + idx_scan) * 100`) → finding_id `maintenance.seq_scan_pct` (red > 80%, yellow > 50%; `references/rules/maintenance.json`, row_identity `schema,table`). LƯU Ý: collector chỉ xét bảng có `n_live_tup > 10,000` (khớp floor thấp nhất P1 bên dưới) — bảng nhỏ hơn bị loại ngay từ SQL vì Postgres ưu tiên seq scan trên bảng nhỏ một cách hợp lý, không phải vấn đề. Rule hiện dùng một ngưỡng % duy nhất (không tách riêng mốc >100K dòng cho P0), theo đúng cách các rule tỷ lệ % khác trong `maintenance.json` (`dead_tuples_pct`, `stale_stats_pct`, `index_bloat_pct`) đã làm. Mỗi row còn có field `related_queries` (rỗng nếu sampling window không bắt được query nào chạm bảng này) — danh sách nguyên văn các query trong sampling window có tham chiếu tới bảng đó, kèm `window_calls`/`window_total_exec_time_ms`, thay thế bước dò `pg_stat_statements` thủ công bên dưới khi có sẵn.
 - **Priority**: P0 (> 80% seq, > 100K rows) | P1 (> 50% seq, > 10K rows)
 - **Remediation Class**: `ddl-review`
 - **Reference**: `query-missing-indexes.md`, `query-composite-indexes.md`
@@ -93,7 +93,9 @@ WHERE sio.indexrelname IN ({{index_name_list}});
 
 **Fix Template:**
 ```sql
--- Tìm columns đang bị filter (từ pg_stat_statements)
+-- Nếu diagnostic có related_queries: đọc nguyên văn query đó (hiển thị qua
+-- <details> theo SKILL.md) để xác định eq_columns/range_columns thật, thay
+-- vì đoán. Chỉ khi related_queries rỗng mới cần dò thủ công:
 SELECT LEFT(query, 300), calls FROM pg_stat_statements
 WHERE query ILIKE '%{{table_name}}%' ORDER BY calls DESC LIMIT 5;
 
