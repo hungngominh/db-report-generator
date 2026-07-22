@@ -117,6 +117,101 @@ def test_collect_runs_and_rows_are_wellformed(pg_dsn):
         assert m["n_live_tup"] > 10000
         assert m["seq_scan"] + m["idx_scan"] > 0
         assert 0.0 <= m["seq_scan_pct"] <= 100.0
-        assert m["related_queries"] == []
+        for q in m["related_queries"]:
+            assert q["source"] in ("window", "cumulative")
+            if q["source"] == "window":
+                assert "window_calls" in q and "window_total_exec_time_ms" in q
+            else:
+                assert "calls" in q and "total_exec_time_ms" in q
         assert set(m) == {"schema", "table", "seq_scan", "idx_scan", "n_live_tup",
                            "seq_scan_pct", "related_queries"}
+
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self._rows = rows
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+    def execute(self, *a):
+        pass
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeConn:
+    def __init__(self, rows):
+        self._rows = rows
+    def cursor(self):
+        return _FakeCursor(self._rows)
+
+
+def _win(queryid="1", query="q", window_calls=3, window_total_exec_time_ms=2.0):
+    return {"queryid": queryid, "query": query, "window_calls": window_calls,
+            "window_total_exec_time_ms": window_total_exec_time_ms}
+
+
+def _cum(queryid="9", query="c", calls=50, total_exec_time_ms=8.0):
+    return {"queryid": queryid, "query": query, "calls": calls,
+            "total_exec_time_ms": total_exec_time_ms}
+
+
+def test_related_for_table_prefers_window_and_tags_source():
+    key = ("public", "orders")
+    out = seq_scan._related_for_table(key, {key: [_win()]}, {key: [_cum()]})
+    assert len(out) == 1
+    assert out[0]["source"] == "window"
+    assert out[0]["window_calls"] == 3
+    assert "calls" not in out[0]
+
+
+def test_related_for_table_falls_back_to_cumulative_when_window_empty():
+    key = ("public", "orders")
+    out = seq_scan._related_for_table(key, {}, {key: [_cum(calls=99, total_exec_time_ms=9.0)]})
+    assert len(out) == 1
+    assert out[0]["source"] == "cumulative"
+    assert out[0]["calls"] == 99
+    assert out[0]["total_exec_time_ms"] == 9.0
+    assert "window_calls" not in out[0]
+
+
+def test_related_for_table_empty_when_neither():
+    assert seq_scan._related_for_table(("public", "x"), {}, {}) == []
+
+
+def test_related_for_table_caps_cumulative_at_five():
+    key = ("public", "orders")
+    items = [_cum(queryid=str(i), calls=100 - i) for i in range(8)]  # pre-sorted desc
+    out = seq_scan._related_for_table(key, {}, {key: items})
+    assert len(out) == 5
+    assert [o["queryid"] for o in out] == ["0", "1", "2", "3", "4"]
+
+
+def test_collect_reset_detected_skips_window_but_uses_cumulative(monkeypatch):
+    seq_rows = [("dbo", "orders", 5000, 10, 20000)]
+    seen = {}
+
+    def fake_group(conn, rows, *, count_key):
+        seen[count_key] = rows
+        if count_key == "calls" and rows:
+            return {("dbo", "orders"): rows}
+        return {}
+
+    monkeypatch.setattr(seq_scan, "_group_by_table", fake_group)
+    caps = {"sampling": {"reset_detected": True,
+                         "deltas": [_win()],
+                         "cumulative": [_cum()]}}
+    diag = seq_scan.collect(_FakeConn(seq_rows), caps)
+
+    assert "window_calls" not in seen          # window path gated off on reset
+    assert "calls" in seen                       # cumulative path still ran
+    m = diag["metrics"][0]
+    assert m["related_queries"][0]["source"] == "cumulative"
+    assert set(m) == {"schema", "table", "seq_scan", "idx_scan", "n_live_tup",
+                      "seq_scan_pct", "related_queries"}
+
+
+def test_collect_no_sampling_yields_empty_related():
+    diag = seq_scan.collect(_FakeConn([("dbo", "orders", 5000, 10, 20000)]), {})
+    assert diag["metrics"][0]["related_queries"] == []

@@ -15,6 +15,8 @@ WHERE n_live_tup > 10000 AND (seq_scan + idx_scan) > 0
 ORDER BY seq_scan DESC
 """
 
+_CUMULATIVE_CAP = 5
+
 
 def seq_scan_pct(seq_scan, idx_scan):
     total = seq_scan + idx_scan
@@ -47,30 +49,53 @@ def _group_by_table(conn, rows, *, count_key):
     return by_table
 
 
+def _related_for_table(key, window_by_table, cumulative_by_table):
+    """Window evidence is primary; cumulative pg_stat_statements is a
+    fallback used only when the sampling window caught no query touching
+    this table (fallback-only). Each item is tagged with its source and
+    carries source-appropriate counters -- window items keep the window
+    deltas, cumulative items carry lifetime calls/total_exec_time_ms so the
+    report never implies a cumulative query ran during the window."""
+    window_matches = window_by_table.get(key, [])
+    if window_matches:
+        return [
+            {"queryid": d.get("queryid"), "query": d.get("query"),
+             "window_calls": d.get("window_calls"),
+             "window_total_exec_time_ms": d.get("window_total_exec_time_ms"),
+             "source": "window"}
+            for d in window_matches
+        ]
+    return [
+        {"queryid": c.get("queryid"), "query": c.get("query"),
+         "calls": c.get("calls"), "total_exec_time_ms": c.get("total_exec_time_ms"),
+         "source": "cumulative"}
+        for c in cumulative_by_table.get(key, [])[:_CUMULATIVE_CAP]
+    ]
+
+
 def collect(conn, caps):
     with conn.cursor() as cur:
         cur.execute(_SQL)
         rows = cur.fetchall()
 
-    related_by_table = {}
+    window_by_table = {}
+    cumulative_by_table = {}
     if rows:
         sampling = caps.get("sampling")
-        if sampling and not sampling.get("reset_detected"):
-            related_by_table = _group_by_table(
-                conn, sampling.get("deltas") or [], count_key="window_calls")
+        if sampling:
+            if not sampling.get("reset_detected"):
+                window_by_table = _group_by_table(
+                    conn, sampling.get("deltas") or [], count_key="window_calls")
+            cumulative_by_table = _group_by_table(
+                conn, sampling.get("cumulative") or [], count_key="calls")
 
     metrics = []
     for r in rows:
         schema, table = r[0], r[1]
-        related = related_by_table.get((schema, table), [])
         metrics.append({
             "schema": schema, "table": table, "seq_scan": int(r[2]), "idx_scan": int(r[3]),
             "n_live_tup": int(r[4]), "seq_scan_pct": seq_scan_pct(int(r[2]), int(r[3])),
-            "related_queries": [
-                {"queryid": d.get("queryid"), "query": d.get("query"),
-                 "window_calls": d.get("window_calls"),
-                 "window_total_exec_time_ms": d.get("window_total_exec_time_ms")}
-                for d in related
-            ],
+            "related_queries": _related_for_table(
+                (schema, table), window_by_table, cumulative_by_table),
         })
     return base.diagnostic("table", "ok", metrics)
