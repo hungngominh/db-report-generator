@@ -84,6 +84,10 @@ from scripts.collectors import schema_checks
 
 COLLECTORS["schema_checks"] = schema_checks.collect
 
+from scripts.collectors import seq_scan
+
+COLLECTORS["seq_scan"] = seq_scan.collect
+
 
 def run_collectors(conn, caps, registry=None, *, sampling=None):
     """Run every collector with per-collector isolation.
