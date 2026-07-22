@@ -215,3 +215,44 @@ def test_collect_reset_detected_skips_window_but_uses_cumulative(monkeypatch):
 def test_collect_no_sampling_yields_empty_related():
     diag = seq_scan.collect(_FakeConn([("dbo", "orders", 5000, 10, 20000)]), {})
     assert diag["metrics"][0]["related_queries"] == []
+
+
+def test_collect_skips_cumulative_grouping_when_window_covers_all(monkeypatch):
+    seq_rows = [("dbo", "orders", 5000, 10, 20000)]
+    seen = {}
+
+    def fake_group(conn, rows, *, count_key):
+        seen[count_key] = rows
+        if count_key == "window_calls":
+            return {("dbo", "orders"): [_win()]}
+        return {}
+
+    monkeypatch.setattr(seq_scan, "_group_by_table", fake_group)
+    caps = {"sampling": {"reset_detected": False, "deltas": [_win()], "cumulative": [_cum()]}}
+    diag = seq_scan.collect(_FakeConn(seq_rows), caps)
+
+    assert "window_calls" in seen          # window path ran
+    assert "calls" not in seen             # cumulative grouping skipped (window covered every flagged table)
+    assert diag["metrics"][0]["related_queries"][0]["source"] == "window"
+
+
+def test_collect_groups_cumulative_when_a_flagged_table_lacks_window(monkeypatch):
+    seq_rows = [("dbo", "orders", 5000, 10, 20000), ("dbo", "users", 3000, 5, 15000)]
+    seen = {}
+
+    def fake_group(conn, rows, *, count_key):
+        seen[count_key] = rows
+        if count_key == "window_calls":
+            return {("dbo", "orders"): [_win()]}      # only orders has a window match
+        if count_key == "calls":
+            return {("dbo", "users"): [_cum()]}       # users falls back to cumulative
+        return {}
+
+    monkeypatch.setattr(seq_scan, "_group_by_table", fake_group)
+    caps = {"sampling": {"reset_detected": False, "deltas": [_win()], "cumulative": [_cum()]}}
+    diag = seq_scan.collect(_FakeConn(seq_rows), caps)
+
+    assert "calls" in seen                 # cumulative grouped because 'users' lacked a window match
+    by_table = {(m["schema"], m["table"]): m["related_queries"] for m in diag["metrics"]}
+    assert by_table[("dbo", "orders")][0]["source"] == "window"
+    assert by_table[("dbo", "users")][0]["source"] == "cumulative"

@@ -86,8 +86,16 @@ def collect(conn, caps):
             if not sampling.get("reset_detected"):
                 window_by_table = _group_by_table(
                     conn, sampling.get("deltas") or [], count_key="window_calls")
-            cumulative_by_table = _group_by_table(
-                conn, sampling.get("cumulative") or [], count_key="calls")
+            # Cumulative is a per-table fallback; only pay to group it when some
+            # flagged table has no window match. _group_by_table issues one DB
+            # round-trip per pg_stat_statements row, so skipping this when the
+            # window already covers every flagged table avoids up to pgss.max
+            # wasted round-trips on a busy/remote DB. Output is unchanged:
+            # _related_for_table never reads cumulative for a table that has a
+            # window match.
+            if any((r[0], r[1]) not in window_by_table for r in rows):
+                cumulative_by_table = _group_by_table(
+                    conn, sampling.get("cumulative") or [], count_key="calls")
 
     metrics = []
     for r in rows:
