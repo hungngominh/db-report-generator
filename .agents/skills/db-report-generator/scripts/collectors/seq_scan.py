@@ -23,27 +23,27 @@ def seq_scan_pct(seq_scan, idx_scan):
     return round(seq_scan / total * 100, 2)
 
 
-def _related_queries_by_table(conn, deltas):
-    """Groups sampling-window query deltas by every (schema, table) they
-    reference, so a flagged table's evidence can show the real WHERE-clause
-    queries touching it -- not just the top-N-by-exec-time queries
-    index_advisor.py separately ranks, which may not include this table at
-    all. A JOIN query is attached under every table it resolves to, not
-    just one -- unlike index_advisor.py, this has no need to reject
-    multi-table queries since it isn't guessing a column suggestion.
-    Matches for each table are sorted by window_calls descending."""
+def _group_by_table(conn, rows, *, count_key):
+    """Groups pg_stat_statements rows -- sampling-window deltas OR cumulative
+    snapshot rows -- by every (schema, table) they reference, so a flagged
+    table's evidence can show the real WHERE-clause queries touching it. A
+    JOIN row is attached under every table it resolves to (this cross-
+    reference has no need to reject multi-table queries the way
+    index_advisor.py does, since it isn't guessing a column suggestion).
+    Each table's matches are sorted by row[count_key] descending --
+    window_calls for deltas, calls for cumulative rows."""
     by_table = {}
-    for delta in deltas:
-        stmt = sql_classify.parse_statement(delta.get("query"))
+    for row in rows:
+        stmt = sql_classify.parse_statement(row.get("query"))
         if stmt is None:
             continue
         relations = sql_classify.referenced_relations(stmt)
         if not relations:
             continue
         for table_key in set(index_catalog.resolve_relations(conn, relations)):
-            by_table.setdefault(table_key, []).append(delta)
+            by_table.setdefault(table_key, []).append(row)
     for matches in by_table.values():
-        matches.sort(key=lambda d: d.get("window_calls") or 0, reverse=True)
+        matches.sort(key=lambda r: r.get(count_key) or 0, reverse=True)
     return by_table
 
 
@@ -56,7 +56,8 @@ def collect(conn, caps):
     if rows:
         sampling = caps.get("sampling")
         if sampling and not sampling.get("reset_detected"):
-            related_by_table = _related_queries_by_table(conn, sampling.get("deltas") or [])
+            related_by_table = _group_by_table(
+                conn, sampling.get("deltas") or [], count_key="window_calls")
 
     metrics = []
     for r in rows:

@@ -20,7 +20,7 @@ def test_seq_scan_pct_formula_edges():
 
 
 def test_related_queries_by_table_empty_deltas_returns_empty_dict():
-    assert seq_scan._related_queries_by_table(None, []) == {}
+    assert seq_scan._group_by_table(None, [], count_key="window_calls") == {}
 
 
 def test_related_queries_by_table_groups_single_table_query(monkeypatch):
@@ -29,7 +29,7 @@ def test_related_queries_by_table_groups_single_table_query(monkeypatch):
     monkeypatch.setattr(sql_classify, "referenced_relations", lambda stmt: [(None, "orders")])
     monkeypatch.setattr(index_catalog, "resolve_relations", lambda conn, relations: [("public", "orders")])
 
-    by_table = seq_scan._related_queries_by_table(None, [delta])
+    by_table = seq_scan._group_by_table(None, [delta], count_key="window_calls")
 
     assert by_table == {("public", "orders"): [delta]}
 
@@ -42,7 +42,7 @@ def test_related_queries_by_table_join_query_attached_to_both_tables(monkeypatch
     monkeypatch.setattr(index_catalog, "resolve_relations",
                          lambda conn, relations: [("public", "orders"), ("public", "orgs")])
 
-    by_table = seq_scan._related_queries_by_table(None, [delta])
+    by_table = seq_scan._group_by_table(None, [delta], count_key="window_calls")
 
     assert by_table == {("public", "orders"): [delta], ("public", "orgs"): [delta]}
 
@@ -51,7 +51,7 @@ def test_related_queries_by_table_drops_unparseable_query(monkeypatch):
     delta = _delta("1", "not valid sql (((")
     monkeypatch.setattr(sql_classify, "parse_statement", lambda sql: None)
 
-    by_table = seq_scan._related_queries_by_table(None, [delta])
+    by_table = seq_scan._group_by_table(None, [delta], count_key="window_calls")
 
     assert by_table == {}
 
@@ -62,7 +62,7 @@ def test_related_queries_by_table_drops_unresolvable_relation(monkeypatch):
     monkeypatch.setattr(sql_classify, "referenced_relations", lambda stmt: [(None, "some_cte_alias")])
     monkeypatch.setattr(index_catalog, "resolve_relations", lambda conn, relations: [])
 
-    by_table = seq_scan._related_queries_by_table(None, [delta])
+    by_table = seq_scan._group_by_table(None, [delta], count_key="window_calls")
 
     assert by_table == {}
 
@@ -72,7 +72,7 @@ def test_related_queries_by_table_no_relations_referenced_is_dropped(monkeypatch
     monkeypatch.setattr(sql_classify, "parse_statement", lambda sql: sql)
     monkeypatch.setattr(sql_classify, "referenced_relations", lambda stmt: [])
 
-    by_table = seq_scan._related_queries_by_table(None, [delta])
+    by_table = seq_scan._group_by_table(None, [delta], count_key="window_calls")
 
     assert by_table == {}
 
@@ -84,7 +84,22 @@ def test_related_queries_by_table_sorted_by_window_calls_descending(monkeypatch)
     monkeypatch.setattr(sql_classify, "referenced_relations", lambda stmt: [(None, "orders")])
     monkeypatch.setattr(index_catalog, "resolve_relations", lambda conn, relations: [("public", "orders")])
 
-    by_table = seq_scan._related_queries_by_table(None, [low, high])
+    by_table = seq_scan._group_by_table(None, [low, high], count_key="window_calls")
+
+    assert by_table[("public", "orders")] == [high, low]
+
+
+def test_group_by_table_sorts_by_calls_desc_for_cumulative(monkeypatch):
+    low = {"queryid": "1", "query": "SELECT * FROM orders WHERE org_id = 1",
+           "calls": 2, "total_exec_time_ms": 1.0}
+    high = {"queryid": "2", "query": "SELECT * FROM orders WHERE org_id = 2",
+            "calls": 90, "total_exec_time_ms": 5.0}
+    monkeypatch.setattr(sql_classify, "parse_statement", lambda sql: sql)
+    monkeypatch.setattr(sql_classify, "referenced_relations", lambda stmt: [(None, "orders")])
+    monkeypatch.setattr(index_catalog, "resolve_relations",
+                        lambda conn, relations: [("public", "orders")])
+
+    by_table = seq_scan._group_by_table(None, [low, high], count_key="calls")
 
     assert by_table[("public", "orders")] == [high, low]
 
