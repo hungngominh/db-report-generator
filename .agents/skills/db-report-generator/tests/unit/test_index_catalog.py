@@ -79,3 +79,31 @@ def test_existing_indexed_columns_against_live_postgres(pg_dsn):
         assert ("id",) in cols
         assert ("org_id", "status") in cols
     conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_resolve_relations_drops_unresolvable_and_keeps_resolvable(pg_dsn):
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    ddl = "CREATE TABLE {s}.orders (id serial PRIMARY KEY)"
+    with _fixtures_sql.make_schema(conn, "resolvetest", ddl):
+        resolved = index_catalog.resolve_relations(
+            conn, [("resolvetest", "orders"), ("resolvetest", "does_not_exist")])
+        assert resolved == [("resolvetest", "orders")]
+    conn.close()
+
+
+@pytest.mark.skipif(not docker_available(), reason="docker not available")
+def test_resolve_relations_duplicate_reference_yields_duplicate_entry(pg_dsn):
+    conn = psycopg2.connect(**pg_dsn)
+    conn.autocommit = True
+    ddl = "CREATE TABLE {s}.orders (id serial PRIMARY KEY)"
+    with _fixtures_sql.make_schema(conn, "resolvetest2", ddl):
+        resolved = index_catalog.resolve_relations(
+            conn, [("resolvetest2", "orders"), ("resolvetest2", "orders")])
+        assert resolved == [("resolvetest2", "orders"), ("resolvetest2", "orders")]
+    conn.close()
+
+
+def test_resolve_relations_empty_input_returns_empty_list():
+    assert index_catalog.resolve_relations(None, []) == []
