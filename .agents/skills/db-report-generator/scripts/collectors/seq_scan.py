@@ -15,8 +15,6 @@ WHERE n_live_tup > 10000 AND (seq_scan + idx_scan) > 0
 ORDER BY seq_scan DESC
 """
 
-_CUMULATIVE_CAP = 5
-
 
 def seq_scan_pct(seq_scan, idx_scan):
     total = seq_scan + idx_scan
@@ -69,7 +67,7 @@ def _related_for_table(key, window_by_table, cumulative_by_table):
         {"queryid": c.get("queryid"), "query": c.get("query"),
          "calls": c.get("calls"), "total_exec_time_ms": c.get("total_exec_time_ms"),
          "source": "cumulative"}
-        for c in cumulative_by_table.get(key, [])[:_CUMULATIVE_CAP]
+        for c in cumulative_by_table.get(key, [])
     ]
 
 
